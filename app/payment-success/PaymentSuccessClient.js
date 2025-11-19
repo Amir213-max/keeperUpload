@@ -5,8 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { graphqlClient } from "@/app/lib/graphqlClient";
 import { gql } from "graphql-request";
 import { CheckCircle, XCircle, Loader2, ShoppingBag, Home, Package } from "lucide-react";
-// TODO: REMOVE MOCK WHEN real verifyTapPayment starts working.
-import { mockVerifyTapPayment, isMockModeEnabled } from "@/app/lib/payments/mockVerifyTapPayment";
 
 const VERIFY_PAYMENT = gql`
  mutation VerifyPayment($input: VerifyTapPaymentInput!) {
@@ -56,17 +54,10 @@ export default function PaymentSuccessClient() {
 
   const verifyPayment = async () => {
     try {
-      // TODO: REMOVE MOCK WHEN real verifyTapPayment starts working.
-      let res;
-      if (isMockModeEnabled(searchParams)) {
-        // Use mock instead of real API call
-        res = await mockVerifyTapPayment(orderId);
-      } else {
-        // Real API call
-        res = await graphqlClient.request(VERIFY_PAYMENT, {
-          input: { order_id: orderId },
-        });
-      }
+      // Real API call
+      const res = await graphqlClient.request(VERIFY_PAYMENT, {
+        input: { order_id: orderId },
+      });
 
       console.log("Payment verification:", res);
       const result = res?.verifyTapPayment;
