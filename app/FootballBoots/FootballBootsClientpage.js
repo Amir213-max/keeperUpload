@@ -13,6 +13,7 @@ import { graphqlClient } from "../lib/graphqlClient";
 import { GET_CATEGORIES_QUERY } from "../lib/queries";
 
 import { useCategory } from "../contexts/CategoryContext";
+import Loader from "../Componants/Loader";
 
 export default function FootballClientPage({ products, brands, attributeValues }) {
   const [categories, setCategories] = useState([]);

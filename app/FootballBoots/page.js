@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { graphqlClient } from "../lib/graphqlClient";
 import { PRODUCTS_SHOES_QUERY } from "../lib/queries";
 import FootballClientPage from "./FootballBootsClientpage";
+import Loader from "../Componants/Loader";
 
 export default async function Page() {
   const data = await graphqlClient.request(PRODUCTS_SHOES_QUERY);
@@ -33,10 +35,12 @@ export default async function Page() {
   });
 
   return (
-    <FootballClientPage
-      products={products}
-      brands={brands}
-      attributeValues={attributeValues}
-    />
+    <Suspense fallback={<Loader />}>
+      <FootballClientPage
+        products={products}
+        brands={brands}
+        attributeValues={attributeValues}
+      />
+    </Suspense>
   );
 }

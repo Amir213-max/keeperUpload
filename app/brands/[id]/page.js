@@ -17,6 +17,7 @@ import Link from "next/link";
 import { Heart } from "lucide-react";
 import { useCurrency } from "@/app/contexts/CurrencyContext";
 import PriceDisplay from "@/app/components/PriceDisplay";
+import Loader from "../../Componants/Loader";
 
 const GET_PRODUCTS_BY_BRAND = gql`
   query getProductsByBrand($brand_id: ID!) {
@@ -58,54 +59,56 @@ export default function BrandPage() {
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [selectedAttributes, setSelectedAttributes] = useState({});
   const [wishlistIds, setWishlistIds] = useState([]);
+  const [loading, setLoading] = useState(true);
   const wishlistId = user?.defaultWishlist?.id || user?.wishlists?.[0]?.id;
   const [currentPage, setCurrentPage] = useState(1);
   const productsPerPage = 20;
  const { loading: currencyLoading } = useCurrency();
 const [currencyRate, setCurrencyRate] = useState(null);
 
-useEffect(() => {
-  const fetchRate = async () => {
-    try {
-      const { getCurrencyRate } = await import("../../lib/getCurrencyRate");
-      const rate = await getCurrencyRate();
-      setCurrencyRate(rate);
-    } catch (err) {
-      console.error("Error loading currency rate:", err);
-    }
-  };
-  fetchRate();
-}, []);
-
-  // 🧩 Fetch Products by Brand
+  // ✅ جلب كل البيانات بشكل متوازي لتحسين الأداء
   useEffect(() => {
     if (!id) return;
-    const fetchProducts = async () => {
-      try {
-        const data = await graphqlClient.request(GET_PRODUCTS_BY_BRAND, { brand_id: id });
-        setProducts(data.productsWithFilters || []);
-        setFilteredProducts(data.productsWithFilters || []);
-      } catch (error) {
-        console.error("Error fetching products by brand:", error);
-      }
-    };
-    fetchProducts();
-  }, [id]);
+    setLoading(true);
 
-  // ❤️ Fetch Wishlist
-  useEffect(() => {
-    if (!wishlistId) return;
-    const fetchWishlist = async () => {
+    const fetchAllData = async () => {
       try {
-        const res = await graphqlClient.request(GET_WISHLIST_ITEMS, { wishlistId });
-        const ids = res?.wishlist?.items?.map((item) => String(item.product.id)) || [];
-        setWishlistIds(ids);
+        // ✅ جلب كل البيانات في نفس الوقت (متوازي)
+        const [productsData, currencyRateData, wishlistData] = await Promise.allSettled([
+          graphqlClient.request(GET_PRODUCTS_BY_BRAND, { brand_id: id }),
+          import("../../lib/getCurrencyRate").then((mod) => mod.getCurrencyRate()),
+          wishlistId
+            ? graphqlClient.request(GET_WISHLIST_ITEMS, { wishlistId })
+            : Promise.resolve(null),
+        ]);
+
+        // ✅ معالجة نتائج المنتجات
+        if (productsData.status === "fulfilled") {
+          const products = productsData.value.productsWithFilters || [];
+          setProducts(products);
+          setFilteredProducts(products);
+        }
+
+        // ✅ معالجة نتائج العملة
+        if (currencyRateData.status === "fulfilled") {
+          setCurrencyRate(currencyRateData.value);
+        }
+
+        // ✅ معالجة نتائج الـ wishlist
+        if (wishlistData.status === "fulfilled" && wishlistData.value) {
+          const ids =
+            wishlistData.value?.wishlist?.items?.map((item) => String(item.product.id)) || [];
+          setWishlistIds(ids);
+        }
       } catch (error) {
-        console.error("Error fetching wishlist:", error);
+        console.error("Error fetching data:", error);
+      } finally {
+        setLoading(false);
       }
     };
-    fetchWishlist();
-  }, [wishlistId]);
+
+    fetchAllData();
+  }, [id, wishlistId, user]);
 
   // ➕ Add to Wishlist
   async function handleAddToWishlist(productId) {
@@ -180,6 +183,9 @@ useEffect(() => {
     if (label.includes("%") || label.toLowerCase().includes("off")) return "bg-gray-500";
     return "bg-yellow-500";
   };
+
+  if (loading) return <Loader />;
+
   return (
     <div className="bg-[#373e3e] min-h-screen">
       <div className="grid pt-1 grid-cols-1 lg:grid-cols-5">

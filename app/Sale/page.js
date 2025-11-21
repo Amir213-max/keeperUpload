@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { graphqlClient } from "../lib/graphqlClient";
 import { PRODUCTS_SALES_QUERY } from "../lib/queries";
 import SalesClientPage from "./SalesClientPage";
+import Loader from "../Componants/Loader";
 
 const fetchProductsByBadges = async () => {
   const data = await graphqlClient.request(PRODUCTS_SALES_QUERY);
@@ -46,10 +48,12 @@ export default async function Page() {
   const brands = [...new Set(products.map((p) => p.brand?.name).filter(Boolean))];
 
   return (
-    <SalesClientPage
-      products={products}
-      brands={brands}
-      attributeValues={attributeValues}
-    />
+    <Suspense fallback={<Loader />}>
+      <SalesClientPage
+        products={products}
+        brands={brands}
+        attributeValues={attributeValues}
+      />
+    </Suspense>
   );
 }

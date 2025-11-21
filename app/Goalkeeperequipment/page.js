@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { graphqlClient } from "../lib/graphqlClient";
 import { PRODUCTS_BY_CATEGORY_QUERY } from "../lib/queries";
 import EquipmentClientPage from "./EquipmenClientpage";
+import Loader from "../Componants/Loader";
 
 const FOOTBALL_BOOTS_CATEGORY_ID = "52"; 
 // تقدر تعدل الـ ID أو تخليها Array وتعرض أكتر من SubCategory لو حابب
@@ -54,10 +56,12 @@ export default async function Page() {
   const brands = [...new Set(products.map((p) => p.brand?.name).filter(Boolean))];
 
   return (
-    <EquipmentClientPage 
-      products={products} 
-      brands={brands} 
-      attributeValues={attributeValues} 
-    />
+    <Suspense fallback={<Loader />}>
+      <EquipmentClientPage 
+        products={products} 
+        brands={brands} 
+        attributeValues={attributeValues} 
+      />
+    </Suspense>
   );
 }

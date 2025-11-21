@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { graphqlClient } from '../../lib/graphqlClient';
 import { gql } from 'graphql-request';
 import { useTranslation } from '../../contexts/TranslationContext'; // ✅ استخدام الـ context
+import Loader from '../../Componants/Loader';
 
 const GET_PAGE_BY_SLUG = gql`
   query GetPageBySlug($slug: String!) {
@@ -39,12 +40,7 @@ export default function PageSlug({ params }) {
     fetchPage();
   }, [slug]);
 
-  if (loading)
-    return (
-      <div className="flex justify-center items-center h-[50vh] bg-black">
-        <p className="text-gray-400 text-lg">Loading...</p>
-      </div>
-    );
+  if (loading) return <Loader />;
 
   if (error)
     return (

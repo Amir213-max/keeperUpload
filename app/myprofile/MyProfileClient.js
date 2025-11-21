@@ -8,6 +8,7 @@ import { useAuth } from "../contexts/AuthContext";
 import toast from "react-hot-toast";
 import { LogOut, User, Lock, Save, Loader2 } from "lucide-react";
 import { useTranslation } from "../contexts/TranslationContext";
+import Loader from "../Componants/Loader";
 
 export default function MyProfileClient() {
   const router = useRouter();
@@ -106,16 +107,7 @@ export default function MyProfileClient() {
   const isRTL = lang === 'ar';
   const direction = isRTL ? 'rtl' : 'ltr';
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-yellow-400 animate-spin mx-auto mb-4" />
-          <p className="text-white">Loading profile...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <Loader />;
 
   if (!user) {
     return (

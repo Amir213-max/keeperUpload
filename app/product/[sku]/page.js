@@ -1,7 +1,9 @@
 // ✅ app/product/[sku]/page.js  (Server Component)
+import { Suspense } from "react";
 import { graphqlClient } from "@/app/lib/graphqlClient";
 import { GET_PRODUCT_BY_SKU } from "@/app/lib/queries";
 import ProductPageClient from "./ProductPageClient";
+import Loader from "@/app/Componants/Loader";
 
 export default async function ProductPageSku({ params }) {
   const sku = decodeURIComponent(params.sku);
@@ -24,5 +26,9 @@ export default async function ProductPageSku({ params }) {
   }
 
   // ✅ مرّر الداتا للـ Client Component
-  return <ProductPageClient product={product} />;
+  return (
+    <Suspense fallback={<Loader />}>
+      <ProductPageClient product={product} />
+    </Suspense>
+  );
 }

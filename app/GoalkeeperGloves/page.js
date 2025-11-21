@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { graphqlClient } from "../lib/graphqlClient";
 import { PRODUCTS_BY_CATEGORY_QUERY } from "../lib/queries";
 import GoalKeeperClientPage from "./GoalkeeperClientPage";
+import Loader from "../Componants/Loader";
 
 const FOOTBALL_BOOTS_CATEGORY_ID = "17"; 
 // تقدر تعدل الـ ID أو تخليها Array وتعرض أكتر من SubCategory لو حابب
@@ -54,10 +56,12 @@ export default async function Page() {
   const brands = [...new Set(products.map((p) => p.brand?.name).filter(Boolean))];
 
   return (
-    <GoalKeeperClientPage 
-      products={products} 
-      brands={brands} 
-      attributeValues={attributeValues} 
-    />
+    <Suspense fallback={<Loader />}>
+      <GoalKeeperClientPage 
+        products={products} 
+        brands={brands} 
+        attributeValues={attributeValues} 
+      />
+    </Suspense>
   );
 }

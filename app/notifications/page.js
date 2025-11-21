@@ -5,6 +5,7 @@ import { graphqlClient } from '../lib/graphqlClient';
 import { UNREAD_NOTIFICATIONS_QUERY } from '../lib/queries';
 import Link from 'next/link';
 import { useAuth } from '../contexts/AuthContext';
+import Loader from '../Componants/Loader';
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState([]);
@@ -40,13 +41,7 @@ export default function NotificationsPage() {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-[60vh]">
-        <p className="text-gray-500">Loading notifications...</p>
-      </div>
-    );
-  }
+  if (loading) return <Loader />;
 
   return (
     <div className="container mx-auto px-4 py-8">

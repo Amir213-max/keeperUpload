@@ -12,6 +12,7 @@ import "@splidejs/react-splide/css";
 import { useTranslation } from "../contexts/TranslationContext";
 import { motion } from "framer-motion";
 import MultiSlider_6 from "./Slider_6";
+import Loader from "./Loader";
 
 export default function HomePageBlocks() {
   const { lang } = useTranslation();
@@ -32,26 +33,48 @@ export default function HomePageBlocks() {
   useEffect(() => {
     async function fetchBlocks() {
       try {
+        // ✅ جلب الـ blocks أولاً
         const data = await graphqlClient.request(GET_ACTIVE_HOME_PAGE_BLOCKS);
         const activeBlocks = data.activeHomepageBlocks || [];
         setBlocks(activeBlocks);
+        setLoading(false); // ✅ نخفي الـ loader بمجرد جلب الـ blocks
 
-        for (let block of activeBlocks) {
-          if (block.type === "products" && block.content?.product_ids?.length) {
+        // ✅ جلب المنتجات بشكل متوازي لجميع الـ blocks في نفس الوقت
+        const productBlocks = activeBlocks.filter(
+          (block) => block.type === "products" && block.content?.product_ids?.length
+        );
+
+        if (productBlocks.length > 0) {
+          // ✅ نجمع كل الـ product IDs من كل الـ blocks
+          const allProductPromises = productBlocks.flatMap((block) => {
             const productIds = block.content.product_ids.map((p) => p.product_id);
-            const productPromises = productIds.map((id) =>
+            return productIds.map((id) =>
               graphqlClient
                 .request(PRODUCTS_BY_IDS_QUERY, { id })
-                .then((res) => res.product)
-                .catch(() => null)
+                .then((res) => ({ blockId: block.id, product: res.product }))
+                .catch(() => ({ blockId: block.id, product: null }))
             );
-            const products = (await Promise.all(productPromises)).filter(Boolean);
-            setProductsMap((prev) => ({ ...prev, [block.id]: products }));
-          }
+          });
+
+          // ✅ نجلب كل المنتجات في نفس الوقت
+          const allResults = await Promise.all(allProductPromises);
+
+          // ✅ نجمع المنتجات حسب الـ block
+          const productsByBlock = {};
+          allResults.forEach(({ blockId, product }) => {
+            if (product) {
+              if (!productsByBlock[blockId]) {
+                productsByBlock[blockId] = [];
+              }
+              productsByBlock[blockId].push(product);
+            }
+          });
+
+          // ✅ نحدث الـ state مرة واحدة
+          setProductsMap(productsByBlock);
         }
       } catch (error) {
         console.error("❌ Error fetching home page blocks:", error);
-      } finally {
         setLoading(false);
       }
     }
@@ -59,7 +82,7 @@ export default function HomePageBlocks() {
     fetchBlocks();
   }, []);
 
-  if (loading) return <p className="text-center py-8">Loading blocks...</p>;
+  if (loading) return <Loader />;
   if (!blocks.length) return <p className="text-center py-8 text-gray-500">No blocks available.</p>;
 
   const getImageUrl = (img) => {
@@ -263,7 +286,7 @@ export default function HomePageBlocks() {
                             className="h-full overflow-hidden"
                           >
                             <Link
-                              href={`/product/${encodeURIComponent(product.sku)}`}
+                             href={`/product/${encodeURIComponent(product.sku)}`}
                               className="block bg-[#111] hover:bg-[#2b2a2a] overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 h-full"
                             >
                               <div className="relative flex items-center justify-center overflow-hidden aspect-[1.3/1.5]">

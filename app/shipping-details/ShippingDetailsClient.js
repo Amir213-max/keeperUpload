@@ -17,6 +17,7 @@ import {
   Download,
   Share2,
 } from "lucide-react";
+import Loader from "../Componants/Loader";
 
 const GET_ORDER_DETAILS = gql`
   query GetOrderDetails($orderId: ID!) {
@@ -98,16 +99,7 @@ export default function ShippingDetailsClient() {
     });
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading shipping details...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <Loader />;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-gray-100 py-8 px-4">

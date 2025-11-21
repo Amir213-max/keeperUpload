@@ -4,10 +4,12 @@ import { useState, useEffect } from "react";
 import { graphqlClient } from "../lib/graphqlClient";
 import { GET_ORDERS } from "../lib/queries"; // استخدم الكويري اللي أرسلتها
 import toast from "react-hot-toast";
+import Loader from "../Componants/Loader";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [expandedOrder, setExpandedOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchOrders();
@@ -15,17 +17,22 @@ export default function OrdersPage() {
 
   const fetchOrders = async () => {
     try {
+      setLoading(true);
       const { orders } = await graphqlClient.request(GET_ORDERS);
       setOrders(orders);
     } catch (error) {
       console.error(error);
       toast.error("Failed to fetch orders");
+    } finally {
+      setLoading(false);
     }
   };
 
   const toggleOrder = (orderId) => {
     setExpandedOrder(expandedOrder === orderId ? null : orderId);
   };
+
+  if (loading) return <Loader />;
 
   return (
     <div className="p-6">

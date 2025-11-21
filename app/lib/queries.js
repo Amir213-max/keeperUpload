@@ -766,3 +766,24 @@ export const FILTER_PRODUCTS_BY_BRAND = gql`
     }
   }
 `;
+
+export const SEARCH_PRODUCTS_QUERY = gql`
+  query SearchProducts($query: String!, $limit: Int, $offset: Int) {
+    productsSearch(query: $query, limit: $limit, offset: $offset) {
+      id
+      name
+      sku
+      images
+      list_price_amount
+      price_range_exact_amount
+      brand {
+        id
+        name
+      }
+      productBadges {
+        label
+        color
+      }
+    }
+  }
+`;

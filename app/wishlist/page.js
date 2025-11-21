@@ -6,6 +6,7 @@ import { gql } from "graphql-request";
 import Link from "next/link";
 import { useCurrency } from "../contexts/CurrencyContext";
 import PriceDisplay from "../components/PriceDisplay";
+import Loader from "../Componants/Loader";
 
 const GET_WISHLIST = gql`
   query GetWishlist($id: ID!) {
@@ -52,7 +53,7 @@ export default function WishlistPage() {
     fetchWishlist();
   }, [wishlistId]);
 
-  if (loading) return <p className="text-center mt-10">Loading wishlist...</p>;
+  if (loading) return <Loader />;
   if (!wishlist) return <p className="text-center mt-10">No wishlist found.</p>;
 
   return (
