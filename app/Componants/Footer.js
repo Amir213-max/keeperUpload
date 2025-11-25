@@ -13,7 +13,7 @@ export default function Footer() {
   useEffect(() => {
     async function fetchSettings() {
       try {
-        const res = await fetch('https://api.keepersport.sa/graphql', {
+        const res = await fetch('https://keeper.in-brackets.online/graphql', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
