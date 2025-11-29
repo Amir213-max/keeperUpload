@@ -13,8 +13,9 @@ export default function Footer() {
   useEffect(() => {
     async function fetchSettings() {
       try {
+
         const res = await fetch('https://keepersport.store/graphql', {
-          method: 'POST',
+   method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             query: `
