@@ -16,7 +16,7 @@ import Loader from "./Loader";
 
 export default function HomePageBlocks() {
   const { lang } = useTranslation();
-  const BASE_URL = "https://keeper.in-brackets.online/storage/";
+  const BASE_URL = "https://keepersport.store/storage/";
   const { loading: currencyLoading } = useCurrency();
   const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);

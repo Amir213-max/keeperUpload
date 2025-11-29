@@ -11,7 +11,7 @@ import { useTranslation } from "../contexts/TranslationContext";
 
 export default function HomePageBlocks() {
   const { lang } = useTranslation();
-  const BASE_URL = "https://keeper.in-brackets.online/storage/";
+  const BASE_URL = "https://keepersport.store/storage/";
   const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [productsMap, setProductsMap] = useState({});
