@@ -55,8 +55,8 @@ export default function BrandsSlider({ brands, onBrandClick, selectedBrand }) {
                 border-2
                 ${
                   selectedBrand === brand
-                    ? 'bg-gradient-to-r from-yellow-400 to-yellow-500 text-gray-900 border-yellow-500 shadow-lg transform scale-105'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 hover:shadow-md'
+                    ? 'bg-gradient-to-r text-white from-gray-400 to-gray-500 text-gray-900  shadow-lg transform scale-105'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:bg-gray-50 hover:shadow-md'
                 }`}
             >
               {brand}
