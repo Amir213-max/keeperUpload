@@ -560,6 +560,23 @@ type PageSearchResult {
     search_time: Float!
 }
 
+type Blog {
+    id: ID!
+    title: String! @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
+    image: String
+    description: String! @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
+    date: String!
+    author_name: String!
+    created_at: String!
+    updated_at: String!
+    
+    # Language-specific translated fields
+    title_en: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
+    title_ar: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
+    description_en: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
+    description_ar: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
+}
+
 type Notification {
     id: ID!
     type: String!
@@ -660,6 +677,7 @@ type NotificationTypeCount {
      tracking_urls: [String!]
      published: Boolean
  }
+ 
  input VerifyPaymentInput {
      order_id: ID!
  }
@@ -1310,15 +1328,31 @@ input CreateOrderFromCartInput {
      meta_description: String
  }
 
- input UpdatePageInput {
-     name: String
-     slug: String
-     url: String
-     description: String
-     published: Boolean
-     meta_title: String
-     meta_description: String
- }
+input UpdatePageInput {
+    name: String
+    slug: String
+    url: String
+    description: String
+    published: Boolean
+    meta_title: String
+    meta_description: String
+}
+
+input BlogInput {
+    title: String!
+    image: String
+    description: String!
+    date: String!
+    author_name: String!
+}
+
+input UpdateBlogInput {
+    title: String
+    image: String
+    description: String
+    date: String
+    author_name: String
+}
 
  input PageFiltersInput {
      published: Boolean
@@ -1338,7 +1372,6 @@ input CreateOrderFromCartInput {
      limit: Int
      offset: Int
  }
-
 type Query {
      users: [User!]! @all(model: "App\\Models\\User")
      user(id: ID! @eq): User @find(model: "App\\Models\\User")
@@ -1441,7 +1474,13 @@ type Query {
     pagesPaginated(page: Int, per_page: Int, filters: PageFiltersInput): PagePaginatedResult! @field(resolver: "App\\GraphQL\\Queries\\PagesPaginatedQuery")
     pagesSearch(input: PageSearchInput!): PageSearchResult! @field(resolver: "App\\GraphQL\\Queries\\PagesSearchQuery")
     pagesWithFilters(filters: PageFiltersInput, limit: Int, offset: Int): [Page!]! @field(resolver: "App\\GraphQL\\Queries\\PagesWithFiltersQuery")
- }
+    
+    # Blog queries
+    blogs: [Blog!]! @all(model: "App\\Models\\Blog")
+    blog(id: ID! @eq): Blog @find(model: "App\\Models\\Blog")
+    blogsByAuthor(author_name: String!): [Blog!]! @field(resolver: "App\\GraphQL\\Queries\\BlogsByAuthorQuery")
+    blogsByDate(date: String!): [Blog!]! @field(resolver: "App\\GraphQL\\Queries\\BlogsByDateQuery")
+}
 
  type Mutation {
      # Authentication mutations
@@ -1537,4 +1576,9 @@ type Query {
     publishPage(id: ID!): Page @field(resolver: "App\\GraphQL\\Mutations\\PublishPageMutation")
     unpublishPage(id: ID!): Page @field(resolver: "App\\GraphQL\\Mutations\\UnpublishPageMutation")
     duplicatePage(id: ID!): Page @field(resolver: "App\\GraphQL\\Mutations\\DuplicatePageMutation")
- }
+    
+    # Blog mutations
+    createBlog(input: BlogInput! @spread): Blog @field(resolver: "App\\GraphQL\\Mutations\\CreateBlogMutation")
+    updateBlog(id: ID!, input: UpdateBlogInput! @spread): Blog @field(resolver: "App\\GraphQL\\Mutations\\UpdateBlogMutation")
+    deleteBlog(id: ID!): Blog @delete(model: "App\\Models\\Blog")
+}

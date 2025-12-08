@@ -164,12 +164,12 @@ export default function HomePageBlocks() {
              {block.type === "banners" && block.content?.banners?.length > 0 && (
   <>
     {block.content.banners.length <= 2 ? (
-      <div className="w-full">
+      <div className="w-full ">
         <div
-          className={`grid gap-3 ${
+          className={`grid gap-3 sm:gap-4 md:gap-6 ${
             block.content.banners.length === 1
               ? "grid-cols-1"
-              : "grid-cols-1 md:grid-cols-1 lg:grid-cols-2"
+              : "grid-cols-1 md:grid-cols-2"
           }`}
         >
           {block.content.banners.map((banner, idx) => {
@@ -184,26 +184,37 @@ export default function HomePageBlocks() {
               <motion.a
                 key={banner.id || idx}
                 href={banner.link || "#"}
-                target="_blank"
-                rel="noopener noreferrer"
+                target={banner.link ? "_blank" : undefined}
+                rel={banner.link ? "noopener noreferrer" : undefined}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: idx * 0.1 }}
-                className={`relative overflow-hidden shadow-md group w-full
+                className={`relative overflow-hidden shadow-lg hover:shadow-2xl group w-full transition-all duration-300
                   ${
                     isTwoBanners
                       ? `
-                        h-[45vh]     /* Mobile + Tablet */
-                        md:h-[45vh] 
-                        lg:h-[45vh] /* Laptop */
-                        xl:h-[50vh] /* Desktop */
+                        aspect-[16/9]     /* Mobile: 16:9 ratio */
+                        sm:aspect-[16/10]  /* Small tablets */
+                        md:aspect-[16/9]   /* Tablets */
+                        lg:aspect-[21/9]   /* Laptops */
+                        xl:aspect-[21/8]   /* Desktop */
+                        max-h-[50vh]      /* Max height for mobile desktop view */
+                        sm:max-h-[55vh]
+                        md:max-h-[60vh]
+                        lg:max-h-[65vh]
+                        xl:max-h-[70vh]
                       `
                       : `
-                        h-[45vh]
-                        sm:h-[50vh]
-                        md:h-[55vh]
-                        lg:h-[60vh]
-                        xl:h-[70vh]
+                        aspect-[16/9]      /* Mobile */
+                        sm:aspect-[16/8]   /* Small tablets */
+                        md:aspect-[21/9]   /* Tablets */
+                        lg:aspect-[21/7]   /* Laptops */
+                        xl:aspect-[21/6]   /* Large Desktop */
+                        max-h-[60vh]       /* Max height for mobile desktop view */
+                        sm:max-h-[65vh]
+                        md:max-h-[70vh]
+                        lg:max-h-[75vh]
+                        xl:max-h-[80vh]
                       `
                   }
                 `}
@@ -212,11 +223,12 @@ export default function HomePageBlocks() {
                   src={imageSrc}
                   alt={banner.title || ""}
                   fill
-                  className={`transition-transform duration-500 group-hover:scale-105 ${
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                  className={`transition-transform duration-700 ease-out group-hover:scale-110 ${
                     isFirstBannerBlock ? "object-fill" : "object-fill"
                   }`}
                   unoptimized
-                  priority={isFirstBannerBlock}
+                  priority={isFirstBannerBlock && idx === 0}
                 />
               </motion.a>
             );
@@ -224,8 +236,8 @@ export default function HomePageBlocks() {
         </div>
       </div>
     ) : (
-      <div className="w-full overflow-x-auto no-scrollbar px-2 md:px-4">
-        <div className="flex gap-3 min-w-max">
+      <div className="w-full overflow-x-auto no-scrollbar px-2 sm:px-4 md:px-6">
+        <div className="flex gap-3 sm:gap-4 md:gap-6 min-w-max pb-2">
           {block.content.banners.map((banner, idx) => {
             const imageSrc =
               isMobile && banner.mobile_image
@@ -236,24 +248,35 @@ export default function HomePageBlocks() {
               <motion.a
                 key={banner.id || idx}
                 href={banner.link || "#"}
-                target="_blank"
-                rel="noopener noreferrer"
+                target={banner.link ? "_blank" : undefined}
+                rel={banner.link ? "noopener noreferrer" : undefined}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: idx * 0.1 }}
-                className="relative flex-shrink-0 
-                  w-[60vw] sm:w-[40vw] md:w-[30vw] lg:w-[25vw] 
-                  h-[25vh] overflow-hidden shadow-md group"
+                className="relative flex-shrink-0 overflow-hidden shadow-lg hover:shadow-2xl group
+                  w-[85vw]      /* Mobile: 85% of viewport */
+                  sm:w-[60vw]   /* Small tablets: 60% */
+                  md:w-[45vw]   /* Tablets: 45% */
+                  lg:w-[35vw]   /* Laptops: 35% */
+                  xl:w-[28vw]   /* Desktop: 28% */
+                  aspect-[16/9] /* Consistent aspect ratio */
+                  max-h-[40vh]  /* Max height for mobile desktop view */
+                  sm:max-h-[45vh]
+                  md:max-h-[50vh]
+                  lg:max-h-[55vh]
+                  xl:max-h-[60vh]
+                "
               >
                 <Image
                   src={imageSrc}
                   alt={banner.title || ""}
                   fill
-                  className={`transition-transform duration-500 group-hover:scale-105 ${
-                    isFirstBannerBlock ? "object-fill" : "object-contain"
+                  sizes="(max-width: 640px) 85vw, (max-width: 768px) 60vw, (max-width: 1024px) 45vw, (max-width: 1280px) 35vw, 28vw"
+                  className={`transition-transform duration-700 ease-out group-hover:scale-110 ${
+                    isFirstBannerBlock ? "object-fill" : "object-fill"
                   }`}
                   unoptimized
-                  priority={isFirstBannerBlock}
+                  priority={isFirstBannerBlock && idx === 0}
                 />
               </motion.a>
             );

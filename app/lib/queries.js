@@ -169,6 +169,42 @@ query ProductsByCategory($categoryId: ID!) {
 
 `;
 
+export const PRODUCTS_WITH_FILTERS_QUERY = gql`
+  query ProductsWithFilters($limit: Int!, $offset: Int!, $filters: ProductFilterInput) {
+    productsWithFilters(
+      filters: $filters
+      limit: $limit
+      offset: $offset
+    ) {
+      id
+      sku
+      name
+      images
+      created_at
+      updated_at
+      productBadges {
+        label
+        color
+      }
+      list_price_amount
+      price_range_exact_amount
+      description
+      productAttributeValues {
+        id
+        key
+        attribute {
+          key
+          id
+          label
+        }
+      }
+      brand {
+        id
+        name
+      }
+    }
+  }
+`;
 
 export const GET_CATEGORIES_QUERY = gql`
 query GetCategories {
@@ -792,6 +828,18 @@ export const SEARCH_PRODUCTS_QUERY = gql`
         label
         color
       }
+    }
+  }
+`;
+
+export const GET_BLOGS_QUERY = gql`
+  query GetBlogs {
+    blogs {
+      id
+      image
+      title
+      description
+      link
     }
   }
 `;
