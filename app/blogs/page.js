@@ -77,7 +77,7 @@ export default function BlogsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
           {blogs.map((blog, idx) => {
             const imageUrl = getImageUrl(blog.image);
-            const blogLink = blog.link || "#";
+            // const blogLink = blog.link || "#";
 
             return (
               <motion.div
@@ -87,10 +87,10 @@ export default function BlogsPage() {
                 transition={{ duration: 0.6, delay: idx * 0.1 }}
                 className="group"
               >
-                <Link
-                  href={blogLink}
-                  target={blogLink.startsWith("http") ? "_blank" : undefined}
-                  rel={blogLink.startsWith("http") ? "noopener noreferrer" : undefined}
+                <div
+                  // href={blogLink}
+                  // target={blogLink.startsWith("http") ? "_blank" : undefined}
+                  // rel={blogLink.startsWith("http") ? "noopener noreferrer" : undefined}
                   className="block h-full"
                 >
                   <div className="bg-[#1a1a1a] hover:bg-[#2a2a2a] rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 h-full flex flex-col">
@@ -135,7 +135,7 @@ export default function BlogsPage() {
                       </div>
                     </div>
                   </div>
-                </Link>
+                </div>
               </motion.div>
             );
           })}

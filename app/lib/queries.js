@@ -839,7 +839,7 @@ export const GET_BLOGS_QUERY = gql`
       image
       title
       description
-      link
+     
     }
   }
 `;
