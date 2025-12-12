@@ -18,15 +18,16 @@ export default function BrandsSlider({ brands, onBrandClick, selectedBrand }) {
       <Splide
         options={{
           type: 'loop',
-          perPage: 5,
+          autoWidth:true,
+          
           perMove: 1,
           breakpoints: {
-            1024: { perPage: 5 },
-            768: { perPage: 4 },
-            640: { perPage: 3 },
-            480: { perPage: 2 },
+            1280: { perPage: 8, arrows: true },
+            1024: { perPage: 5, arrows: true },
+            768: { perPage: 4, arrows: false },
+            640: { perPage: 4, arrows: false },
           },
-          gap: '8px',
+          gap: '.5rem',
           pagination: false,
           arrows: true,
           direction: lang === 'ar' ? 'rtl' : 'ltr',
@@ -50,13 +51,12 @@ export default function BrandsSlider({ brands, onBrandClick, selectedBrand }) {
                 text-sm sm:text-base font-semibold
                 px-5 py-2.5 cursor-pointer
                 transition-all duration-300 ease-in-out
-                whitespace-nowrap w-full
+                whitespace-nowrap w-fit
                 rounded-lg
-                border-2
                 ${
                   selectedBrand === brand
-                    ? 'bg-gradient-to-r text-white from-gray-400 to-gray-500 text-gray-900  shadow-lg transform scale-105'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:bg-gray-50 hover:shadow-md'
+                    ? 'bg-gradient-to-r text-white from-gray-400 to-gray-500 text-gray-900 shadow-lg transform scale-105'
+                    : 'bg-white text-gray-700 shadow-md hover:shadow-lg hover:bg-gray-50'
                 }`}
             >
               {brand}
@@ -102,26 +102,26 @@ export default function BrandsSlider({ brands, onBrandClick, selectedBrand }) {
           cursor: not-allowed !important;
         }
 
-        /* تحسين التصميم على الشاشات الصغيرة */
-        @media (max-width: 768px) {
+        /* إخفاء الأسهم على الشاشات الصغيرة والمتوسطة */
+        @media (max-width: 1024px) {
           .splide__arrow {
-            width: 24px !important;
-            height: 24px !important;
-          }
-
-          .splide__arrow svg {
-            width: 12px !important;
-            height: 12px !important;
-          }
-
-          .splide__arrow--prev {
-            left: -12px !important;
-          }
-
-          .splide__arrow--next {
-            right: -12px !important;
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
           }
         }
+
+        /* إظهار الأسهم فقط على الشاشات الكبيرة */
+        @media (min-width: 1280px) {
+          .splide__arrow {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+          }
+        }
+
+ 
+ 
       `}</style>
     </div>
   );

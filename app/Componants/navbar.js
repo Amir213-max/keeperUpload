@@ -61,7 +61,7 @@ useEffect(() => {
       <header className="w-full bg-black shadow py-4">
         <div className="navbar-container container mx-auto px-4 flex items-center justify-between">
           {/* ✅ Left side (Menu + Cart) */}
-          <div className="navbar-left flex items-center gap-4 order-3 sm:order-1">
+          <div className="navbar-left flex items-center gap-3 md:gap-4 lg:gap-5 xl:gap-6 order-3 sm:order-1">
             <button
               onClick={() => setSidebarOpen(true)}
               className="text-white hover:text-amber-400 transition-colors duration-200 cursor-pointer lg:hidden"
@@ -100,39 +100,8 @@ useEffect(() => {
             </Link>
           </div>
 
-          {/* ✅ Right side (User + Search + Notifications + Lang) */}
-          <div className="navbar-right order-2 flex items-center gap-2 md:gap-4">
-            {/* 🔑 لو المستخدم مسجل دخول */}
-             
-    
-{user ? (
-  <div className="flex items-center gap-2 md:gap-3">
-    <Link href="/myprofile" className="flex items-center gap-2 text-white hover:text-amber-400 transition-colors">
-      <span className="text-xs sm:text-sm hidden sm:inline">{user.name}</span>
-      <FaUser size={18} className="md:w-5 md:h-5" />
-    </Link>
-
-    {/* ✅ زر Logout أصغر ومتجاوب - مخفي في الشاشات الصغيرة */}
-    <button
-      onClick={() => {
-        logout();
-        setCartOpen(false);
-      }}
-      className="hidden lg:flex bg-red-600 hover:bg-red-700 text-white px-2 py-1 md:px-3 md:py-1.5 rounded text-xs md:text-sm transition-colors duration-200"
-      title="Logout"
-    >
-      <span className="hidden sm:inline">Logout</span>
-      <span className="sm:hidden">Out</span>
-    </button>
-  </div>
-) : (
-  <Link
-    href="/login"
-    className="text-white hover:text-amber-600 cursor-pointer transition-colors duration-200"
-  >
-    <FaUser className="hidden md:flex" size={20} />
-  </Link>
-)}
+          {/* ✅ Right side (Search + Notifications + Lang) */}
+          <div className="navbar-right order-2 flex items-center gap-2 md:gap-4 lg:gap-5 xl:gap-6">
 
             {/* 🔍 Search */}
             <button

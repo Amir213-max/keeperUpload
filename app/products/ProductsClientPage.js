@@ -46,6 +46,9 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
       setSelectedCategoryId(categoryFromUrl);
     } else if (initialCategoryId) {
       setSelectedCategoryId(initialCategoryId);
+    } else {
+      // ✅ إذا لم يكن هناك category في URL أو props، امسح selectedCategoryId
+      setSelectedCategoryId(null);
     }
   }, [searchParams, setSelectedCategoryId, initialCategoryId]);
 

@@ -50,7 +50,12 @@ useEffect(() => {
     if (brandFromUrl) setSelectedBrand(brandFromUrl);
 
     const categoryFromUrl = searchParams.get("category");
-    if (categoryFromUrl) setSelectedCategoryId(categoryFromUrl);
+    if (categoryFromUrl) {
+      setSelectedCategoryId(categoryFromUrl);
+    } else {
+      // ✅ إذا لم يكن هناك category في URL، امسح selectedCategoryId
+      setSelectedCategoryId(null);
+    }
 
     const attrs = {};
     for (const [key, value] of searchParams.entries()) {
@@ -171,14 +176,16 @@ useEffect(() => {
             {selectedCategoryName || t("Goalkeeper Apparel")}
           </h1>
 
-          <BrandsSlider
-            brands={brands}
-            selectedBrand={selectedBrand}
-            direction={isRTL ? "rtl" : "ltr"}
-            onBrandClick={(brand) =>
-              setSelectedBrand(brand === selectedBrand ? null : brand)
-            }
-          />
+          {!selectedCategoryId && (
+            <BrandsSlider
+              brands={brands}
+              selectedBrand={selectedBrand}
+              direction={isRTL ? "rtl" : "ltr"}
+              onBrandClick={(brand) =>
+                setSelectedBrand(brand === selectedBrand ? null : brand)
+              }
+            />
+          )}
 
           <div className="flex mb-4 gap-3 flex-wrap">
             <FilterDropdown

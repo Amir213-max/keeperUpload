@@ -60,6 +60,12 @@
 
 
 
+
+
+
+
+
+
 import { Suspense } from "react";
 import { graphqlClient } from "../lib/graphqlClient";
 import { PRODUCTS_BY_CATEGORY_QUERY } from "../lib/queries";

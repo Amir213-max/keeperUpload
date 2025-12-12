@@ -122,9 +122,10 @@ export default function BlogsPage() {
 
                       {/* Description */}
                       {blog.description && (
-                        <p className="text-gray-400 text-sm sm:text-base line-clamp-3 mb-4 flex-1">
-                          {blog.description}
-                        </p>
+                        <div 
+                          className="text-gray-400 text-sm sm:text-base line-clamp-3 mb-4 flex-1"
+                          dangerouslySetInnerHTML={{ __html: blog.description }}
+                        />
                       )}
 
                       {/* Read More Link */}

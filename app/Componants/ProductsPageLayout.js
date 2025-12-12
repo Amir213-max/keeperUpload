@@ -229,7 +229,7 @@ export default function ProductsPageLayout({
             {selectedCategoryName || pageTitle}
           </h1>
 
-          {brands.length > 1 && (
+          {brands.length > 1 && !selectedCategoryId && (
             <BrandsSlider
               brands={brands}
               selectedBrand={selectedBrand}

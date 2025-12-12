@@ -334,6 +334,30 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 "use client";
 
 import Link from "next/link";
@@ -372,7 +396,12 @@ export default function SalesClientPage({ products, brands, attributeValues }) {
     if (brandFromUrl) setSelectedBrand(brandFromUrl);
 
     const categoryFromUrl = searchParams.get("category");
-    if (categoryFromUrl) setSelectedCategoryId(categoryFromUrl);
+    if (categoryFromUrl) {
+      setSelectedCategoryId(categoryFromUrl);
+    } else {
+      // ✅ إذا لم يكن هناك category في URL، امسح selectedCategoryId
+      setSelectedCategoryId(null);
+    }
 
     const attrs = {};
     for (const [key, value] of searchParams.entries()) {
@@ -486,6 +515,7 @@ export default function SalesClientPage({ products, brands, attributeValues }) {
             {selectedCategoryName || t("Sales")}
           </h1>
 
+          {!selectedCategoryId && (
           <BrandsSlider
             brands={brands}
             selectedBrand={selectedBrand}
@@ -494,6 +524,7 @@ export default function SalesClientPage({ products, brands, attributeValues }) {
               setSelectedBrand(brand === selectedBrand ? null : brand)
             }
           />
+          )}
 
           <div className="flex mb-4 gap-3 flex-wrap">
             <FilterDropdown
