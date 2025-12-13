@@ -8,6 +8,8 @@ import { ChevronDown, ShoppingCart } from "lucide-react";
 import Link from "next/link";
 import { useTranslation } from "@/app/contexts/TranslationContext";
 import { useCurrency } from "@/app/contexts/CurrencyContext";
+import { useCart } from "@/app/contexts/CartContext";
+import toast from "react-hot-toast";
 
 export default function ProductDetailsSidebar({ product }) {
   const [quantity, setQuantity] = useState(1);
@@ -16,6 +18,7 @@ export default function ProductDetailsSidebar({ product }) {
   const [openDropdown, setOpenDropdown] = useState(null);
   const router = useRouter();
   const { t } = useTranslation();
+  const { loadCart } = useCart();
   const {
     convertPrice,
     formatPrice,
@@ -48,7 +51,7 @@ const addToCart = async () => {
   );
 
   if (missing.length > 0) {
-    alert(`Please select: ${missing.join(", ")}`);
+    toast.error(`Please select: ${missing.join(", ")}`);
     return;
   }
 
@@ -59,7 +62,9 @@ const addToCart = async () => {
    if (user) {
   // ✅ لو المستخدم داخل (هيتحفظ في السيرفر)
   await addToCartTempUser(product.id, quantity, product.list_price_amount || 0);
-  alert(`${product.name} added to your account cart!`);
+  toast.success(`${product.name} added to your cart!`);
+  // ✅ تحديث الـ cart في الـ context
+  await loadCart();
 } else {
   // 🧍‍♂️ الجيست (يتخزن محلي)
   const cartKey = "guest_cart";
@@ -89,12 +94,20 @@ const addToCart = async () => {
 }
 
   localStorage.setItem(cartKey, JSON.stringify(existingCart));
-  alert(`${product.name} added to guest cart!`);
+  toast.success(`${product.name} added to your cart!`);
+  // ✅ تحديث الـ cart في الـ context للضيف
+  await loadCart();
 }
+
+    // ✅ فتح الـ CartSidebar تلقائياً بعد تحديث الـ cart
+    setTimeout(() => {
+      console.log("🛒 Dispatching openCart event...");
+      window.dispatchEvent(new CustomEvent("openCart"));
+    }, 300);
 
   } catch (err) {
     console.error("❌ Error adding to cart:", err);
-    alert("Failed to add to cart. Check console for details.");
+    toast.error("Failed to add to cart. Please try again.");
   } finally {
     setAdding(false);
   }

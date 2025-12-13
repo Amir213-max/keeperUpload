@@ -14,7 +14,7 @@ import { useCategory } from "../contexts/CategoryContext";
 import PriceDisplay from "../components/PriceDisplay";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function TeamsportClientPage ({ products, brands, attributeValues }) {
+export default function TeamsportClientPage ({ products, brands, attributeValues, rootCategory }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [categories, setCategories] = useState([]);
@@ -30,28 +30,6 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
   const { loading: currencyLoading } = useCurrency();
   const isRTL = language === "ar"; // ✅ اتجاه الموقع
 
-  // 🔹 قراءة الفلاتر من URL عند تحميل الصفحة
-  useEffect(() => {
-    const brandFromUrl = searchParams.get("brand");
-    if (brandFromUrl) setSelectedBrand(brandFromUrl);
-
-    const categoryFromUrl = searchParams.get("category");
-    if (categoryFromUrl) {
-      setSelectedCategoryId(categoryFromUrl);
-    } else {
-      // ✅ إذا لم يكن هناك category في URL، امسح selectedCategoryId
-      setSelectedCategoryId(null);
-    }
-
-    const attrs = {};
-    for (const [key, value] of searchParams.entries()) {
-      if (key.startsWith("attr_")) {
-        attrs[key.replace("attr_", "")] = value.split(",");
-      }
-    }
-    setSelectedAttributes(attrs);
-  }, [searchParams, setSelectedCategoryId]);
-
   // 🔹 جلب التصنيفات
   useEffect(() => {
     const fetchCategories = async () => {
@@ -64,6 +42,42 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
     };
     fetchCategories();
   }, []);
+
+  const categoriesWithProducts = useMemo(() => {
+    return categories.filter((cat) =>
+      products.some((product) =>
+        (product.rootCategories || []).some((pCat) => pCat.id === cat.id)
+      )
+    );
+  }, [categories, products]);
+
+  // 🔹 قراءة الفلاتر من URL عند تحميل الصفحة
+  useEffect(() => {
+    const brandFromUrl = searchParams.get("brand");
+    if (brandFromUrl) setSelectedBrand(brandFromUrl);
+
+    const categoryFromUrl = searchParams.get("category");
+    if (categoryFromUrl) {
+      // 🔹 البحث عن الكاتيجوري بالـ slug وتحويله لـ ID
+      const foundCategory = categoriesWithProducts.find(
+        (cat) => cat.slug === decodeURIComponent(categoryFromUrl)
+      );
+      if (foundCategory) {
+        setSelectedCategoryId(foundCategory.id);
+      }
+    } else {
+      // ✅ إذا لم يكن هناك category في URL، امسح selectedCategoryId
+      setSelectedCategoryId(null);
+    }
+
+    const attrs = {};
+    for (const [key, value] of searchParams.entries()) {
+      if (key.startsWith("attr_")) {
+        attrs[key.replace("attr_", "")] = value.split(",");
+      }
+    }
+    setSelectedAttributes(attrs);
+  }, [searchParams, setSelectedCategoryId, categoriesWithProducts]);
 
   // 🔹 فلترة المنتجات حسب الفلاتر
   useEffect(() => {
@@ -97,18 +111,13 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
     setCurrentPage(1);
   }, [products, selectedBrand, selectedAttributes, selectedCategoryId]);
 
-  const categoriesWithProducts = useMemo(() => {
-    return categories.filter((cat) =>
-      products.some((product) =>
-        (product.rootCategories || []).some((pCat) => pCat.id === cat.id)
-      )
-    );
-  }, [categories, products]);
+  const [selectedCategorySlug, setSelectedCategorySlug] = useState(null);
 
   // 🔹 ضبط اسم التصنيف المحدد
   useEffect(() => {
     const cat = categoriesWithProducts.find((c) => c.id === selectedCategoryId);
     setSelectedCategoryName(cat?.name || null);
+    setSelectedCategorySlug(cat?.slug || null);
   }, [selectedCategoryId, categoriesWithProducts]);
 
   // 🔹 تحديث الـ URL عند تغيير الفلاتر
@@ -116,14 +125,17 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
     const params = new URLSearchParams();
 
     if (selectedBrand) params.set("brand", selectedBrand);
-    if (selectedCategoryId) params.set("category", selectedCategoryId);
+    if (selectedCategoryId && selectedCategorySlug) {
+      // 🔹 استخدام slug بدل الـ ID في URL
+      params.set("category", encodeURIComponent(selectedCategorySlug));
+    }
 
     Object.entries(selectedAttributes).forEach(([attr, values]) => {
       if (values.length) params.set(`attr_${attr}`, values.join(","));
     });
 
     router.replace(`?${params.toString()}`, { scroll: false });
-  }, [selectedBrand, selectedCategoryId, selectedAttributes, router]);
+  }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router]);
 
   const indexOfLastProduct = currentPage * productsPerPage;
   const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
@@ -137,6 +149,14 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
     return "bg-yellow-500";
   };
 
+  // 🔹 معالجة URL الصورة
+  const getImageUrl = (image) => {
+    if (!image) return null;
+    if (image.startsWith('http')) return image;
+    // استخدام BASE_URL مباشرة
+    return `https://keepersport.store/storage/${image}`;
+  };
+
   return (
     <div className={`bg-[#373e3e] ${isRTL ? "rtl" : "ltr"}`}>
       <div className="grid pt-1 grid-cols-1 lg:grid-cols-5">
@@ -145,11 +165,25 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
           <Sidebar
             categories={categoriesWithProducts}
             onSelectCategory={(catId) => {
-              if (catId === selectedCategoryId) {
-                setSelectedCategoryId(null);
-                setSelectedCategoryName(null);
-              } else {
-                setSelectedCategoryId(catId);
+              // 🔹 استخدام router.push مع slug للتنقل بسلاسة
+              const selectedCat = categoriesWithProducts.find((c) => c.id === catId);
+              if (selectedCat) {
+                if (catId === selectedCategoryId) {
+                  setSelectedCategoryId(null);
+                  setSelectedCategoryName(null);
+                  setSelectedCategorySlug(null);
+                  router.push('/Teamsport', { scroll: false });
+                } else {
+                  setSelectedCategoryId(catId);
+                  // تحديث URL مباشرة بالـ slug
+                  const params = new URLSearchParams();
+                  if (selectedBrand) params.set("brand", selectedBrand);
+                  params.set("category", encodeURIComponent(selectedCat.slug));
+                  Object.entries(selectedAttributes).forEach(([attr, values]) => {
+                    if (values.length) params.set(`attr_${attr}`, values.join(","));
+                  });
+                  router.push(`/Teamsport?${params.toString()}`, { scroll: false });
+                }
               }
             }}
             isRTL={isRTL} // ✅ تمرير اتجاه اللغة
@@ -158,6 +192,17 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
 
         {/* Products Section */}
         <div className="md:col-span-4 p-4 bg-white">
+          {/* 🟢 عرض صورة rootCategory فوق المنتجات */}
+          {rootCategory?.image && (
+            <div className="w-full mb-4">
+              <img 
+                src={getImageUrl(rootCategory.image)}
+                alt={rootCategory.name || "Category Banner"}
+                className="w-full h-auto object-cover"
+              />
+            </div>
+          )}
+
           <h1 className="text-4xl text-[#1f2323] p-2">
             {selectedCategoryName || t("Teamsport")}
           </h1>

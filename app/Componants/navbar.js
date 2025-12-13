@@ -41,6 +41,17 @@ useEffect(() => {
     fetchBlocks();
   }, []);
 
+  // ✅ فتح الـ CartSidebar عند إضافة منتج
+  useEffect(() => {
+    const handleOpenCart = () => {
+      console.log("🛒 Opening cart sidebar...");
+      setCartOpen(true);
+    };
+
+    window.addEventListener("openCart", handleOpenCart);
+    return () => window.removeEventListener("openCart", handleOpenCart);
+  }, []);
+
         
   // ✅ جلب بيانات المستخدم والتوكن من الـ AuthContext
   const { user, token, logout } = useAuth();
@@ -101,7 +112,7 @@ useEffect(() => {
           </div>
 
           {/* ✅ Right side (Search + Notifications + Lang) */}
-          <div className="navbar-right order-2 flex items-center gap-2 md:gap-4 lg:gap-5 xl:gap-6">
+          <div className="navbar-right order-2 flex items-center gap-4 md:gap-4 lg:gap-5 xl:gap-6">
 
             {/* 🔍 Search */}
             <button

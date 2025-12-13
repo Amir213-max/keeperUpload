@@ -25,11 +25,11 @@ const fetchProductsByCategory = async () => {
   // 🟢 عرض المنتجات من الأحدث إلى الأقدم
   products = products.reverse();
 
-  return products;
+  return { products, rootCategory: data.rootCategory };
 };
 
 export default async function Page() {
-  const products = await fetchProductsByCategory();
+  const { products, rootCategory } = await fetchProductsByCategory();
 
   // 🟢 تجهيز الـ Attributes (فلترة بالخصائص زي الحجم أو اللون)
   const attributeMap = {};
@@ -60,7 +60,8 @@ export default async function Page() {
       <EquipmentClientPage 
         products={products} 
         brands={brands} 
-        attributeValues={attributeValues} 
+        attributeValues={attributeValues}
+        rootCategory={rootCategory}
       />
     </Suspense>
   );

@@ -27,11 +27,11 @@ const fetchProductsByCategory = async () => {
   // ترتيب المنتجات بالأحدث
   products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  return products;
+  return { products, rootCategory: data.rootCategory };
 };
 
 export default async function Page() {
-  const products = await fetchProductsByCategory();
+  const { products, rootCategory } = await fetchProductsByCategory();
 
   // ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
   // 🟢 جمع Attributes للفلترة
@@ -68,6 +68,7 @@ export default async function Page() {
         products={products}
         brands={brands}
         attributeValues={attributeValues}
+        rootCategory={rootCategory}
       />
     </Suspense>
   );

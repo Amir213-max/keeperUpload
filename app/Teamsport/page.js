@@ -31,11 +31,11 @@ const fetchProductsByCategory = async () => {
   // لو مفيش created_at في الداتا، استخدم السطر ده بدل اللي فوق:
   // products = products.reverse();
 
-  return products;
+  return { products, rootCategory: data.rootCategory };
 };
 
 export default async function Page() {
-  const products = await fetchProductsByCategory();
+  const { products, rootCategory } = await fetchProductsByCategory();
 
   // 🟢 تجهيز الـ Attributes (فلترة بالخصائص زي الحجم أو اللون)
   const attributeMap = {};
@@ -66,7 +66,8 @@ export default async function Page() {
       <TeamsportClientPage 
         products={products} 
         brands={brands} 
-        attributeValues={attributeValues} 
+        attributeValues={attributeValues}
+        rootCategory={rootCategory}
       />
     </Suspense>
   );

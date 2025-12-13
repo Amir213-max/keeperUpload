@@ -101,8 +101,8 @@ query ProductsByCategory($categoryId: ID!) {
   rootCategory(id: $categoryId) {
     id
     name
-   
     slug
+    image
     products {
     created_at
       updated_at
@@ -211,10 +211,13 @@ query GetCategories {
   rootCategories {
     id
     name
+    slug
+    image
   }
   products {
-  created_at
-      updated_at
+    created_at
+    updated_at
+ 
     list_price_amount
     list_price_currency
     relative_list_price_difference
@@ -225,11 +228,12 @@ query GetCategories {
     price_range_maximum_amount
     price_range_minimum_amount
     id
-    description
-    sku
     name
+    sku
+    description
     are_shoes
-    list_price_amount
+ 
+    images
     brand {
       id
       name
@@ -240,12 +244,11 @@ query GetCategories {
       attribute {
         id
         label
+        key
       }
     }
-    images
-   
   }
-  }
+}
 `;
 
 export const PRODUCTS_SHOES_QUERY = gql` 
@@ -774,6 +777,8 @@ export const Root_CATEGORIES = gql`
     rootCategories {
       id
       name
+      slug
+      image
       parent {
         id
         name

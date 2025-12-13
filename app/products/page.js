@@ -1,12 +1,25 @@
 import { Suspense } from "react";
 import { graphqlClient } from "../lib/graphqlClient";
-import { PRODUCTS_BY_CATEGORY_QUERY } from "../lib/queries";
+import { PRODUCTS_BY_CATEGORY_QUERY, GET_CATEGORIES_QUERY } from "../lib/queries";
 
 import Loader from "../Componants/Loader";
 import ProductsClientPage from "./ProductsClientPage";
 
 const fetchProductsByCategory = async (categoryId) => {
-  if (!categoryId) return [];
+  // 🟢 إذا لم يكن هناك category، اجلب جميع المنتجات
+  if (!categoryId) {
+    try {
+      const data = await graphqlClient.request(GET_CATEGORIES_QUERY);
+      const products = data.products || [];
+      // ترتيب المنتجات من الأحدث إلى الأقدم
+      products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      return { products, rootCategory: null };
+    } catch (error) {
+      console.error("Error fetching all products:", error);
+      // في حالة الخطأ، ارجع قائمة فارغة
+      return { products: [], rootCategory: null };
+    }
+  }
   
   const variables = { categoryId };
   const data = await graphqlClient.request(PRODUCTS_BY_CATEGORY_QUERY, variables);
@@ -25,12 +38,12 @@ const fetchProductsByCategory = async (categoryId) => {
   // ترتيب المنتجات من الأحدث إلى الأقدم حسب created_at
   products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  return products;
+  return { products, rootCategory: data.rootCategory };
 };
 
 export default async function ProductsPage({ searchParams }) {
   const categoryId = searchParams?.category || null;
-  const products = await fetchProductsByCategory(categoryId);
+  const { products, rootCategory } = await fetchProductsByCategory(categoryId);
 
   // تجهيز الـ Attributes (فلترة بالخصائص زي الحجم أو اللون)
   const attributeMap = {};
@@ -63,6 +76,7 @@ export default async function ProductsPage({ searchParams }) {
         brands={brands} 
         attributeValues={attributeValues}
         categoryId={categoryId}
+        rootCategory={rootCategory}
       />
     </Suspense>
   );

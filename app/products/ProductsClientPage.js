@@ -14,7 +14,7 @@ import { GET_CATEGORIES_QUERY } from "../lib/queries";
 import { useCategory } from "../contexts/CategoryContext";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function ProductsClientPage({ products, brands, attributeValues, categoryId: initialCategoryId }) {
+export default function ProductsClientPage({ products, brands, attributeValues, categoryId: initialCategoryId, rootCategory }) {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -39,19 +39,6 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
 
   const isRTL = language === "ar";
 
-  // Set initial category from URL or props
-  useEffect(() => {
-    const categoryFromUrl = searchParams.get("category");
-    if (categoryFromUrl) {
-      setSelectedCategoryId(categoryFromUrl);
-    } else if (initialCategoryId) {
-      setSelectedCategoryId(initialCategoryId);
-    } else {
-      // ✅ إذا لم يكن هناك category في URL أو props، امسح selectedCategoryId
-      setSelectedCategoryId(null);
-    }
-  }, [searchParams, setSelectedCategoryId, initialCategoryId]);
-
   // Fetch categories
   useEffect(() => {
     const fetchCategories = async () => {
@@ -64,6 +51,33 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     };
     fetchCategories();
   }, []);
+
+  const categoriesWithProducts = useMemo(() => {
+    return categories.filter((cat) =>
+      products.some((product) =>
+        (product.rootCategories || []).some((pCat) => pCat.id === cat.id)
+      )
+    );
+  }, [categories, products]);
+
+  // Set initial category from URL or props
+  useEffect(() => {
+    const categoryFromUrl = searchParams.get("category");
+    if (categoryFromUrl) {
+      // 🔹 البحث عن الكاتيجوري بالـ slug وتحويله لـ ID
+      const foundCategory = categoriesWithProducts.find(
+        (cat) => cat.slug === decodeURIComponent(categoryFromUrl)
+      );
+      if (foundCategory) {
+        setSelectedCategoryId(foundCategory.id);
+      }
+    } else if (initialCategoryId) {
+      setSelectedCategoryId(initialCategoryId);
+    } else {
+      // ✅ إذا لم يكن هناك category في URL أو props، امسح selectedCategoryId
+      setSelectedCategoryId(null);
+    }
+  }, [searchParams, setSelectedCategoryId, initialCategoryId, categoriesWithProducts]);
 
   // Filter products
   useEffect(() => {
@@ -97,37 +111,60 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     setCurrentPage(1);
   }, [products, selectedBrand, selectedAttributes, selectedCategoryId]);
 
-  const categoriesWithProducts = useMemo(() => {
-    return categories.filter((cat) =>
-      products.some((product) =>
-        (product.rootCategories || []).some((pCat) => pCat.id === cat.id)
-      )
-    );
-  }, [categories, products]);
+  const [currentRootCategory, setCurrentRootCategory] = useState(rootCategory);
+  const [selectedCategorySlug, setSelectedCategorySlug] = useState(null);
 
   useEffect(() => {
     const cat = categoriesWithProducts.find((c) => c.id === selectedCategoryId);
     setSelectedCategoryName(cat?.name || null);
-  }, [selectedCategoryId, categoriesWithProducts]);
+    setSelectedCategorySlug(cat?.slug || null);
+    
+    // 🔹 تحديث rootCategory عند اختيار category جديد
+    if (cat) {
+      // البحث عن rootCategory من categories (يحتوي على image)
+      const fullCategory = categories.find((c) => c.id === selectedCategoryId);
+      setCurrentRootCategory(fullCategory || null);
+    } else {
+      setCurrentRootCategory(null);
+    }
+  }, [selectedCategoryId, categoriesWithProducts, categories]);
+
+  // 🔹 تحديث rootCategory من props عند تغييرها
+  useEffect(() => {
+    if (rootCategory) {
+      setCurrentRootCategory(rootCategory);
+    }
+  }, [rootCategory]);
 
   // Update URL when filters change
   useEffect(() => {
     const params = new URLSearchParams();
 
     if (selectedBrand) params.set("brand", selectedBrand);
-    if (selectedCategoryId) params.set("category", selectedCategoryId);
+    if (selectedCategoryId && selectedCategorySlug) {
+      // 🔹 استخدام slug بدل الـ ID في URL
+      params.set("category", encodeURIComponent(selectedCategorySlug));
+    }
 
     Object.entries(selectedAttributes).forEach(([attr, values]) => {
       if (values.length) params.set(`attr_${attr}`, values.join(","));
     });
 
     router.replace(`?${params.toString()}`, { scroll: false });
-  }, [selectedBrand, selectedCategoryId, selectedAttributes, router]);
+  }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router]);
 
   const indexOfLastProduct = currentPage * productsPerPage;
   const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
   const currentProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct);
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+
+  // 🔹 معالجة URL الصورة
+  const getImageUrl = (image) => {
+    if (!image) return null;
+    if (image.startsWith('http')) return image;
+    // استخدام BASE_URL مباشرة
+    return `https://keepersport.store/storage/${image}`;
+  };
 
   return (
     <div className={`bg-[#373e3e] ${isRTL ? "rtl" : "ltr"}`}>
@@ -137,11 +174,25 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
           <Sidebar
             categories={categoriesWithProducts}
             onSelectCategory={(catId) => {
-              if (catId === selectedCategoryId) {
-                setSelectedCategoryId(null);
-                setSelectedCategoryName(null);
-              } else {
-                setSelectedCategoryId(catId);
+              // 🔹 استخدام router.push مع slug للتنقل بسلاسة
+              const selectedCat = categoriesWithProducts.find((c) => c.id === catId);
+              if (selectedCat) {
+                if (catId === selectedCategoryId) {
+                  setSelectedCategoryId(null);
+                  setSelectedCategoryName(null);
+                  setSelectedCategorySlug(null);
+                  router.push('/products', { scroll: false });
+                } else {
+                  setSelectedCategoryId(catId);
+                  // تحديث URL مباشرة بالـ slug
+                  const params = new URLSearchParams();
+                  if (selectedBrand) params.set("brand", selectedBrand);
+                  params.set("category", encodeURIComponent(selectedCat.slug));
+                  Object.entries(selectedAttributes).forEach(([attr, values]) => {
+                    if (values.length) params.set(`attr_${attr}`, values.join(","));
+                  });
+                  router.push(`/products?${params.toString()}`, { scroll: false });
+                }
               }
             }}
             isRTL={isRTL}
@@ -150,6 +201,17 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
 
         {/* Products Section */}
         <div className="md:col-span-4 p-4 bg-white">
+          {/* 🟢 عرض صورة rootCategory فوق المنتجات */}
+          {currentRootCategory?.image && (
+            <div className="w-full mb-4">
+              <img 
+                src={getImageUrl(currentRootCategory.image)}
+                alt={currentRootCategory.name || "Category Banner"}
+                className="w-full h-auto object-cover"
+              />
+            </div>
+          )}
+
           <h1 className="text-4xl text-[#1f2323] p-2">
             {selectedCategoryName || t("All Products")}
           </h1>

@@ -25,11 +25,11 @@ const fetchProductsByCategory = async () => {
   // 🟢 ترتيب المنتجات من الأحدث إلى الأقدم حسب created_at
   products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  return products;
+  return { products, rootCategory: data.rootCategory };
 };
 
 export default async function Page() {
-  const products = await fetchProductsByCategory();
+  const { products, rootCategory } = await fetchProductsByCategory();
 
   // 🟢 تجهيز الـ Attributes (فلترة بالخصائص زي الحجم أو اللون)
   const attributeMap = {};
@@ -60,7 +60,8 @@ export default async function Page() {
       <GoalKeeperClientPage 
         products={products} 
         brands={brands} 
-        attributeValues={attributeValues} 
+        attributeValues={attributeValues}
+        rootCategory={rootCategory}
       />
     </Suspense>
   );
