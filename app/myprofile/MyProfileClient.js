@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { graphqlClient } from "../lib/graphqlClient";
+import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { GET_PROFILE } from "../lib/queries";
 import { useAuth } from "../contexts/AuthContext";
 import toast from "react-hot-toast";
@@ -45,8 +45,9 @@ export default function MyProfileClient() {
         return;
       }
 
+      // Use API route proxy to avoid CORS issues
       // Pass token as variable to the query
-      const { profile } = await graphqlClient.request(GET_PROFILE, {
+      const { profile } = await graphqlRequest(GET_PROFILE, {
         token: token,
       });
       setUser(profile);

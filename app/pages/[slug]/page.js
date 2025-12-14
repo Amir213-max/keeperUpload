@@ -2,7 +2,7 @@
 
 import { use } from 'react';
 import { useState, useEffect } from 'react';
-import { graphqlClient } from '../../lib/graphqlClient';
+import { graphqlRequest } from '../../lib/graphqlClientHelper';
 import { gql } from 'graphql-request';
 import { useTranslation } from '../../contexts/TranslationContext'; // ✅ استخدام الـ context
 import Loader from '../../Componants/Loader';
@@ -29,7 +29,8 @@ export default function PageSlug({ params }) {
   useEffect(() => {
     async function fetchPage() {
       try {
-        const data = await graphqlClient.request(GET_PAGE_BY_SLUG, { slug });
+        // Use API route proxy to avoid CORS issues
+        const data = await graphqlRequest(GET_PAGE_BY_SLUG, { slug });
         setPage(data.pageBySlug);
       } catch (err) {
         setError(err.message);

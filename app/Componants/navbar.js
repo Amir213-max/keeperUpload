@@ -70,7 +70,7 @@ useEffect(() => {
 
       {/* ✅ Navbar */}
       <header className="w-full bg-black shadow py-4">
-        <div className="navbar-container container mx-auto px-4 flex items-center justify-between">
+        <div className="navbar-container container mx-auto px-2 flex items-center justify-between">
           {/* ✅ Left side (Menu + Cart) */}
           <div className="navbar-left flex items-center gap-4 md:gap-4 lg:gap-5 xl:gap-6 order-3 sm:order-1">
             <button
@@ -82,9 +82,9 @@ useEffect(() => {
 
             <button
               onClick={() => setCartOpen(true)}
-              className="relative text-white hover:text-amber-400 transition-colors duration-200 cursor-pointer"
+              className="relative text-white hover:text-amber-400 transition-colors duration-200 cursor-pointer flex items-center"
             >
-              <FaShoppingCart className='hidden md:flex'  size={20} />
+              <FaShoppingCart size={20} />
               {cartItemCount > 0 && (
                 <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                   {cartItemCount > 99 ? '99+' : cartItemCount}

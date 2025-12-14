@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { graphqlClient } from "../lib/graphqlClient";
+import { graphqlRequest } from "../lib/graphqlClientHelper";
 import {
   fetchUserCart,
   removeItemFromCart,
@@ -98,7 +98,8 @@ export default function CartSidebar({ isOpen, onClose }) {
         const results = await Promise.all(
           productIds.map(async (productId) => {
             try {
-              const data = await graphqlClient.request(RECOMMENDED_PRODUCTS_QUERY, { productId });
+              // Use API route proxy to avoid CORS issues
+              const data = await graphqlRequest(RECOMMENDED_PRODUCTS_QUERY, { productId });
               return data?.productsWithCategoryRecommendations?.recommended_products || [];
             } catch (err) {
               console.error("⚠️ Error fetching recommendations for:", productId, err);
@@ -162,7 +163,8 @@ export default function CartSidebar({ isOpen, onClose }) {
 const handleAddToCart = async (productId) => {
   try {
     // جلب بيانات المنتج للتحقق من وجود Attributes
-    const { product } = await graphqlClient.request(GET_PRODUCT_BY_ID, { id: productId });
+    // Use API route proxy to avoid CORS issues
+    const { product } = await graphqlRequest(GET_PRODUCT_BY_ID, { id: productId });
     
     // تجهيز الخصائص
     const attributesMap = {};
@@ -210,7 +212,8 @@ const addProductToCartDirectly = async (productId) => {
         return;
       }
 
-      await graphqlClient.request(ADD_ITEM_TO_CART, {
+      // Use API route proxy to avoid CORS issues
+      await graphqlRequest(ADD_ITEM_TO_CART, {
         input: { cart_id: cartId, product_id: productId, quantity: 1 },
       });
     } else {
@@ -225,7 +228,8 @@ const addProductToCartDirectly = async (productId) => {
         existingCart.lineItems[existingItemIndex].quantity += 1;
       } else {
         // 🧩 جلب بيانات المنتج وتخزينها كاملة في الكارت
-        const { product } = await graphqlClient.request(GET_PRODUCT_BY_ID, { id: productId });
+        // Use API route proxy to avoid CORS issues
+        const { product } = await graphqlRequest(GET_PRODUCT_BY_ID, { id: productId });
 
         existingCart.lineItems.push({
           productId,

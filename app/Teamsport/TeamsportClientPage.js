@@ -8,8 +8,16 @@ import ProductSlider from "../Componants/ProductSlider";
 import Sidebar from "../Componants/sidebar";
 import { useTranslation } from "../contexts/TranslationContext";
 import { useCurrency } from "../contexts/CurrencyContext";
-import { graphqlClient } from "../lib/graphqlClient";
+import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { GET_CATEGORIES_QUERY } from "../lib/queries";
+import {
+  attributeNameToSlug,
+  attributeValuesToSlug,
+  slugToAttributeValues,
+  matchSlugToAttributeName,
+  toSlug,
+  fromSlug,
+} from "../lib/urlSlugHelper";
 import { useCategory } from "../contexts/CategoryContext";
 import PriceDisplay from "../components/PriceDisplay";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -34,7 +42,8 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const data = await graphqlClient.request(GET_CATEGORIES_QUERY);
+        // Use API route proxy to avoid CORS issues
+        const data = await graphqlRequest(GET_CATEGORIES_QUERY);
         setCategories(data.rootCategories || []);
       } catch (error) {
         console.error("Error fetching categories:", error);
@@ -51,10 +60,15 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
     );
   }, [categories, products]);
 
-  // 🔹 قراءة الفلاتر من URL عند تحميل الصفحة
+  // 🔹 قراءة الفلاتر من URL عند تحميل الصفحة (SEO-friendly slugs)
   useEffect(() => {
-    const brandFromUrl = searchParams.get("brand");
-    if (brandFromUrl) setSelectedBrand(brandFromUrl);
+    // Read brand from URL (convert from slug)
+    const brandSlug = searchParams.get("brand");
+    if (brandSlug) {
+      setSelectedBrand(fromSlug(brandSlug));
+    } else {
+      setSelectedBrand(null);
+    }
 
     const categoryFromUrl = searchParams.get("category");
     if (categoryFromUrl) {
@@ -70,14 +84,24 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
       setSelectedCategoryId(null);
     }
 
+    // Read attributes from URL (SEO-friendly slugs)
     const attrs = {};
     for (const [key, value] of searchParams.entries()) {
-      if (key.startsWith("attr_")) {
-        attrs[key.replace("attr_", "")] = value.split(",");
+      // Skip brand and category
+      if (key === "brand" || key === "category") continue;
+      
+      // Match slug to actual attribute name
+      const attrName = matchSlugToAttributeName(key, attributeValues);
+      if (attrName) {
+        // Convert slug values back to readable format
+        const attrValues = slugToAttributeValues(value);
+        if (attrValues.length > 0) {
+          attrs[attrName] = attrValues;
+        }
       }
     }
     setSelectedAttributes(attrs);
-  }, [searchParams, setSelectedCategoryId, categoriesWithProducts]);
+  }, [searchParams, setSelectedCategoryId, categoriesWithProducts, attributeValues]);
 
   // 🔹 فلترة المنتجات حسب الفلاتر
   useEffect(() => {
@@ -120,18 +144,29 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
     setSelectedCategorySlug(cat?.slug || null);
   }, [selectedCategoryId, categoriesWithProducts]);
 
-  // 🔹 تحديث الـ URL عند تغيير الفلاتر
+  // 🔹 تحديث الـ URL عند تغيير الفلاتر (SEO-friendly format)
   useEffect(() => {
     const params = new URLSearchParams();
 
-    if (selectedBrand) params.set("brand", selectedBrand);
+    // Add brand as slug
+    if (selectedBrand) {
+      params.set("brand", toSlug(selectedBrand));
+    }
+    
     if (selectedCategoryId && selectedCategorySlug) {
       // 🔹 استخدام slug بدل الـ ID في URL
       params.set("category", encodeURIComponent(selectedCategorySlug));
     }
 
+    // Add attributes as SEO-friendly slugs (no attr_ prefix, no commas, no underscores)
     Object.entries(selectedAttributes).forEach(([attr, values]) => {
-      if (values.length) params.set(`attr_${attr}`, values.join(","));
+      if (values && values.length > 0) {
+        const slugName = attributeNameToSlug(attr);
+        const slugValues = attributeValuesToSlug(values);
+        if (slugName && slugValues) {
+          params.set(slugName, slugValues);
+        }
+      }
     });
 
     router.replace(`?${params.toString()}`, { scroll: false });

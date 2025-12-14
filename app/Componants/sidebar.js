@@ -55,7 +55,13 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false }) {
   // دالة التنقل للـ Products مع التأكد من setIsOpen
   const handleSubcategoryClick = (subId) => {
     console.log("Subcategory ID clicked:", subId);
-    router.push(`/products?category=${subId}`);
+    // 🔹 البحث عن slug من categories
+    const selectedCat = categories.find((cat) => cat.id === subId);
+    if (selectedCat?.slug) {
+      router.push(`/products/${selectedCat.slug}`, { scroll: false });
+    } else {
+      router.push(`/products`, { scroll: false });
+    }
     if (setIsOpen) setIsOpen(false); // ← آمنة حتى لو setIsOpen مش موجود
   };
 

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, ShoppingCart } from "lucide-react";
 import { useCurrency } from "../contexts/CurrencyContext";
 import PriceDisplay from "../components/PriceDisplay";
-import { graphqlClient } from "../lib/graphqlClient";
+import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { ADD_ITEM_TO_CART } from "../lib/mutations";
 import { fetchUserCart } from "../lib/mutations";
 import toast from "react-hot-toast";
@@ -55,7 +55,8 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
       const fetchProduct = async () => {
         setLoading(true);
         try {
-          const data = await graphqlClient.request(GET_PRODUCT_BY_ID, { id: productId });
+          // Use API route proxy to avoid CORS issues
+          const data = await graphqlRequest(GET_PRODUCT_BY_ID, { id: productId });
           setProduct(data?.product);
           setSelectedAttributes({});
           setQuantity(1);
@@ -121,7 +122,8 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
           return;
         }
 
-        await graphqlClient.request(ADD_ITEM_TO_CART, {
+        // Use API route proxy to avoid CORS issues
+        await graphqlRequest(ADD_ITEM_TO_CART, {
           input: {
             cart_id: cartId,
             product_id: product.id,

@@ -9,22 +9,49 @@ import { useTranslation } from "../contexts/TranslationContext";
 import FilterDropdown from "../Componants/CheckboxDropdown ";
 import { useCurrency } from "../contexts/CurrencyContext";
 import PriceDisplay from "../components/PriceDisplay";
-import { graphqlClient } from "../lib/graphqlClient";
+import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { GET_CATEGORIES_QUERY } from "../lib/queries";
 import { useCategory } from "../contexts/CategoryContext";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import {
+  attributeNameToSlug,
+  attributeValuesToSlug,
+  slugToAttributeValues,
+  matchSlugToAttributeName,
+  toSlug,
+  fromSlug,
+  buildPathSegmentUrl,
+  parsePathSegments,
+} from "../lib/urlSlugHelper";
 
-export default function ProductsClientPage({ products, brands, attributeValues, categoryId: initialCategoryId, rootCategory }) {
+export default function ProductsClientPage({ products, brands, attributeValues, categoryId: initialCategoryId, categorySlug: initialCategorySlug, rootCategory }) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
 
   const [categories, setCategories] = useState([]);
-  const [selectedBrand, setSelectedBrand] = useState(searchParams.get("brand") || null);
+  // Initialize brand from URL (convert from slug to readable format)
+  const [selectedBrand, setSelectedBrand] = useState(() => {
+    const brandSlug = searchParams.get("brand");
+    return brandSlug ? fromSlug(brandSlug) : null;
+  });
+  
+  // Initialize attributes from URL (convert from SEO-friendly slugs)
   const [selectedAttributes, setSelectedAttributes] = useState(() => {
     const attrs = {};
+    // Parse all URL parameters and match them to attribute names
     for (const [key, value] of searchParams.entries()) {
-      if (key.startsWith("attr_")) {
-        attrs[key.replace("attr_", "")] = value.split(",");
+      // Skip brand and category
+      if (key === "brand" || key === "category") continue;
+      
+      // Try to match slug to actual attribute name
+      const attrName = matchSlugToAttributeName(key, attributeValues);
+      if (attrName) {
+        // Convert slug values back to readable format
+        const attrValues = slugToAttributeValues(value);
+        if (attrValues.length > 0) {
+          attrs[attrName] = attrValues;
+        }
       }
     }
     return attrs;
@@ -43,7 +70,8 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const data = await graphqlClient.request(GET_CATEGORIES_QUERY);
+        // Use API route proxy to avoid CORS issues
+        const data = await graphqlRequest(GET_CATEGORIES_QUERY);
         setCategories(data.rootCategories || []);
       } catch (error) {
         console.error("Error fetching categories:", error);
@@ -60,13 +88,35 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     );
   }, [categories, products]);
 
-  // Set initial category from URL or props
+  // Set initial category and attributes from URL path or props
   useEffect(() => {
-    const categoryFromUrl = searchParams.get("category");
-    if (categoryFromUrl) {
+    // 🔹 قراءة slug و path segments من path (مثل /products/goalkeeper-jerseys/black/size-large)
+    let pathSlug = null;
+    let pathSegments = [];
+    
+    if (pathname && pathname.startsWith('/products/')) {
+      const pathWithoutBase = pathname.replace('/products/', '').split('?')[0];
+      const parts = pathWithoutBase.split('/').filter(p => p);
+      
+      if (parts.length > 0) {
+        pathSlug = parts[0];
+        pathSegments = parts.slice(1); // بقية الأجزاء هي filters
+      }
+    }
+    
+    // Set category
+    if (pathSlug && pathSlug !== 'products' && pathSlug !== '') {
       // 🔹 البحث عن الكاتيجوري بالـ slug وتحويله لـ ID
       const foundCategory = categoriesWithProducts.find(
-        (cat) => cat.slug === decodeURIComponent(categoryFromUrl)
+        (cat) => cat.slug === decodeURIComponent(pathSlug)
+      );
+      if (foundCategory) {
+        setSelectedCategoryId(foundCategory.id);
+      }
+    } else if (initialCategorySlug) {
+      // إذا كان slug موجود في props
+      const foundCategory = categoriesWithProducts.find(
+        (cat) => cat.slug === initialCategorySlug
       );
       if (foundCategory) {
         setSelectedCategoryId(foundCategory.id);
@@ -74,10 +124,17 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     } else if (initialCategoryId) {
       setSelectedCategoryId(initialCategoryId);
     } else {
-      // ✅ إذا لم يكن هناك category في URL أو props، امسح selectedCategoryId
       setSelectedCategoryId(null);
     }
-  }, [searchParams, setSelectedCategoryId, initialCategoryId, categoriesWithProducts]);
+    
+    // Parse path segments to attributes
+    if (pathSegments.length > 0 && attributeValues.length > 0) {
+      const parsedAttrs = parsePathSegments(pathSegments, attributeValues);
+      if (Object.keys(parsedAttrs).length > 0) {
+        setSelectedAttributes(parsedAttrs);
+      }
+    }
+  }, [pathname, setSelectedCategoryId, initialCategoryId, initialCategorySlug, categoriesWithProducts, attributeValues]);
 
   // Filter products
   useEffect(() => {
@@ -136,21 +193,27 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     }
   }, [rootCategory]);
 
-  // Update URL when filters change
+  // 🔹 قراءة brand من query parameter (إذا كان موجود)
   useEffect(() => {
-    const params = new URLSearchParams();
-
-    if (selectedBrand) params.set("brand", selectedBrand);
-    if (selectedCategoryId && selectedCategorySlug) {
-      // 🔹 استخدام slug بدل الـ ID في URL
-      params.set("category", encodeURIComponent(selectedCategorySlug));
+    const brandSlug = searchParams.get("brand");
+    if (brandSlug) {
+      setSelectedBrand(fromSlug(brandSlug));
+    } else {
+      // Only clear if we're not in the middle of updating
+      // This prevents clearing brand when path segments change
     }
+  }, [searchParams]);
 
-    Object.entries(selectedAttributes).forEach(([attr, values]) => {
-      if (values.length) params.set(`attr_${attr}`, values.join(","));
-    });
+  // Update URL when filters change (using path segments format)
+  useEffect(() => {
+    // Build URL with path segments for attributes
+    const newUrl = buildPathSegmentUrl(
+      selectedCategorySlug || null,
+      selectedAttributes,
+      selectedBrand || null
+    );
 
-    router.replace(`?${params.toString()}`, { scroll: false });
+    router.replace(newUrl, { scroll: false });
   }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router]);
 
   const indexOfLastProduct = currentPage * productsPerPage;
@@ -174,24 +237,23 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
           <Sidebar
             categories={categoriesWithProducts}
             onSelectCategory={(catId) => {
-              // 🔹 استخدام router.push مع slug للتنقل بسلاسة
+              // 🔹 استخدام router.push مع slug في path للتنقل بسلاسة
               const selectedCat = categoriesWithProducts.find((c) => c.id === catId);
               if (selectedCat) {
-                if (catId === selectedCategoryId) {
-                  setSelectedCategoryId(null);
-                  setSelectedCategoryName(null);
+              if (catId === selectedCategoryId) {
+                setSelectedCategoryId(null);
+                setSelectedCategoryName(null);
                   setSelectedCategorySlug(null);
                   router.push('/products', { scroll: false });
-                } else {
-                  setSelectedCategoryId(catId);
-                  // تحديث URL مباشرة بالـ slug
-                  const params = new URLSearchParams();
-                  if (selectedBrand) params.set("brand", selectedBrand);
-                  params.set("category", encodeURIComponent(selectedCat.slug));
-                  Object.entries(selectedAttributes).forEach(([attr, values]) => {
-                    if (values.length) params.set(`attr_${attr}`, values.join(","));
-                  });
-                  router.push(`/products?${params.toString()}`, { scroll: false });
+              } else {
+                setSelectedCategoryId(catId);
+                  // تحديث URL مباشرة باستخدام path segments
+                  const newUrl = buildPathSegmentUrl(
+                    selectedCat.slug,
+                    selectedAttributes,
+                    selectedBrand || null
+                  );
+                  router.push(newUrl, { scroll: false });
                 }
               }
             }}

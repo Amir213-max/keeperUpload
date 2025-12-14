@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { fetchUserCart, removeItemFromCart } from "../lib/mutations";
-import { graphqlClient } from "../lib/graphqlClient";
+import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { UPDATE_CART_ITEM_QUANTITY, ADD_ITEM_TO_CART } from "../lib/mutations";
 
 const CartContext = createContext();
@@ -36,7 +36,8 @@ export function CartProvider({ children }) {
         if (guestCart.length > 0 && userCart?.id) {
           for (const item of guestCart) {
             try {
-              await graphqlClient.request(ADD_ITEM_TO_CART, {
+              // Use API route proxy to avoid CORS issues
+              await graphqlRequest(ADD_ITEM_TO_CART, {
                 input: {
                   cart_id: userCart.id,
                   product_id: item.productId || item.product?.id,
@@ -108,7 +109,8 @@ export function CartProvider({ children }) {
 
       if (user) {
         // ✅ Logged-in user → update via API
-        await graphqlClient.request(UPDATE_CART_ITEM_QUANTITY, {
+        // Use API route proxy to avoid CORS issues
+        await graphqlRequest(UPDATE_CART_ITEM_QUANTITY, {
           id: itemId,
           quantity: quantity,
         });

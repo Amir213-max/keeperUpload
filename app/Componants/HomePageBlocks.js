@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { graphqlClient } from "../lib/graphqlClient";
+import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { GET_ACTIVE_HOME_PAGE_BLOCKS, PRODUCTS_BY_IDS_QUERY } from "../lib/queries";
 import Link from "next/link";
 import Image from "next/image";
@@ -34,7 +34,8 @@ export default function HomePageBlocks() {
     async function fetchBlocks() {
       try {
         // ✅ جلب الـ blocks أولاً
-        const data = await graphqlClient.request(GET_ACTIVE_HOME_PAGE_BLOCKS);
+        // Use API route proxy to avoid CORS issues
+        const data = await graphqlRequest(GET_ACTIVE_HOME_PAGE_BLOCKS);
         const activeBlocks = data.activeHomepageBlocks || [];
         setBlocks(activeBlocks);
         setLoading(false); // ✅ نخفي الـ loader بمجرد جلب الـ blocks
@@ -49,8 +50,7 @@ export default function HomePageBlocks() {
           const allProductPromises = productBlocks.flatMap((block) => {
             const productIds = block.content.product_ids.map((p) => p.product_id);
             return productIds.map((id) =>
-              graphqlClient
-                .request(PRODUCTS_BY_IDS_QUERY, { id })
+              graphqlRequest(PRODUCTS_BY_IDS_QUERY, { id })
                 .then((res) => ({ blockId: block.id, product: res.product }))
                 .catch(() => ({ blockId: block.id, product: null }))
             );

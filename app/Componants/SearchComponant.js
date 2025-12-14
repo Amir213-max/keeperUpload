@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaSearch, FaTimes } from 'react-icons/fa';
-import { graphqlClient } from '../lib/graphqlClient';
+import { graphqlRequest } from '../lib/graphqlClientHelper';
 import { SEARCH_PRODUCTS_QUERY } from '../lib/queries';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -31,7 +31,8 @@ export default function SearchComponent({ onClose }) {
     const timeoutId = setTimeout(async () => {
       setLoading(true);
       try {
-        const data = await graphqlClient.request(SEARCH_PRODUCTS_QUERY, {
+        // Use API route proxy to avoid CORS issues
+        const data = await graphqlRequest(SEARCH_PRODUCTS_QUERY, {
           query: searchText.trim(),
           limit: 10,
         });

@@ -1,49 +1,43 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { graphqlClient } from "../lib/graphqlClient";
-import { PRODUCTS_BY_CATEGORY_QUERY, GET_CATEGORIES_QUERY } from "../lib/queries";
+import { GET_CATEGORIES_QUERY } from "../lib/queries";
 
 import Loader from "../Componants/Loader";
 import ProductsClientPage from "./ProductsClientPage";
 
-const fetchProductsByCategory = async (categoryId) => {
-  // 🟢 إذا لم يكن هناك category، اجلب جميع المنتجات
-  if (!categoryId) {
-    try {
-      const data = await graphqlClient.request(GET_CATEGORIES_QUERY);
-      const products = data.products || [];
-      // ترتيب المنتجات من الأحدث إلى الأقدم
-      products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      return { products, rootCategory: null };
-    } catch (error) {
-      console.error("Error fetching all products:", error);
-      // في حالة الخطأ، ارجع قائمة فارغة
-      return { products: [], rootCategory: null };
-    }
+const fetchAllProducts = async () => {
+  try {
+    const data = await graphqlClient.request(GET_CATEGORIES_QUERY);
+    const products = data.products || [];
+    products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return { products, rootCategory: null };
+  } catch (error) {
+    console.error("Error fetching all products:", error);
+    return { products: [], rootCategory: null };
   }
-  
-  const variables = { categoryId };
-  const data = await graphqlClient.request(PRODUCTS_BY_CATEGORY_QUERY, variables);
-
-  // جمع المنتجات من الكاتيجوري والسب كاتيجوريز
-  let products = data.rootCategory?.products || [];
-
-  if (data.rootCategory?.subCategories) {
-    data.rootCategory.subCategories.forEach((sub) => {
-      if (sub.products) {
-        products = [...products, ...sub.products];
-      }
-    });
-  }
-
-  // ترتيب المنتجات من الأحدث إلى الأقدم حسب created_at
-  products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-  return { products, rootCategory: data.rootCategory };
 };
 
 export default async function ProductsPage({ searchParams }) {
-  const categoryId = searchParams?.category || null;
-  const { products, rootCategory } = await fetchProductsByCategory(categoryId);
+  // In Next.js 15, searchParams must be awaited before accessing its properties
+  const resolvedSearchParams = await searchParams;
+  
+  // 🔹 إذا كان هناك category في query parameter، redirect إلى path
+  const categoryFromQuery = resolvedSearchParams?.category;
+  if (categoryFromQuery) {
+    // 🔹 البحث عن slug من categories
+    const categoriesData = await graphqlClient.request(GET_CATEGORIES_QUERY);
+    const foundCategory = categoriesData.rootCategories?.find(
+      (cat) => cat.id === categoryFromQuery || cat.slug === categoryFromQuery
+    );
+    
+    if (foundCategory?.slug) {
+      // Redirect إلى path مع slug
+      redirect(`/products/${foundCategory.slug}`);
+    }
+  }
+
+  const { products, rootCategory } = await fetchAllProducts();
 
   // تجهيز الـ Attributes (فلترة بالخصائص زي الحجم أو اللون)
   const attributeMap = {};
@@ -75,7 +69,6 @@ export default async function ProductsPage({ searchParams }) {
         products={products} 
         brands={brands} 
         attributeValues={attributeValues}
-        categoryId={categoryId}
         rootCategory={rootCategory}
       />
     </Suspense>
