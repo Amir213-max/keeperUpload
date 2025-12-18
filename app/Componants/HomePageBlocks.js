@@ -166,8 +166,8 @@ export default function HomePageBlocks() {
     {block.content.banners.length <= 2 ? (
       <div className={`w-full ${
         block.content.banners.length === 1 
-          ? "-mx-1 md:mx-0" 
-          : "-mx-1 md:mx-0"
+          ? " md:mx-0" 
+          : " md:mx-0"
       }`}>
         <div
           className={`grid ${
@@ -198,8 +198,8 @@ export default function HomePageBlocks() {
                   ${hasMobileImage && isSingleBanner ? "w-[calc(100%+0.5rem)] md:w-full" : "w-full"}
                   ${
                     isTwoBanners
-                      ? "aspect-[16/9] md:aspect-[21/9]"
-                      : "aspect-[16/9] md:aspect-[21/9] lg:aspect-[21/7]"
+                      ? "aspect-[4/3] min-h-[300px] md:aspect-[21/9]"
+                      : "aspect-[4/3] min-h-[300px] md:aspect-[21/9] lg:aspect-[21/7]"
                   }
                 `}
               >
@@ -208,7 +208,7 @@ export default function HomePageBlocks() {
                   alt={banner.title || ""}
                   fill
                   sizes={hasMobileImage && isSingleBanner ? "100vw" : "(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"}
-                  className={hasMobileImage ? "object-fill" : "object-contain"}
+                  // className={hasMobileImage ? "object-fill" : "object-contain"}
                   unoptimized
                   priority={isFirstBannerBlock && idx === 0}
                 />
@@ -245,7 +245,7 @@ export default function HomePageBlocks() {
                   alt={banner.title || ""}
                   fill
                   sizes="(max-width: 640px) 90vw, (max-width: 768px) 70vw, (max-width: 1024px) 50vw, (max-width: 1280px) 40vw, 32vw"
-                  className="object-contain"
+                  className="object-fill"
                   unoptimized
                   priority={isFirstBannerBlock && idx === 0}
                 />

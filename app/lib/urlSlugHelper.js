@@ -176,13 +176,16 @@ export function parseFilterUrl(searchParams) {
 export function matchSlugToAttributeName(slug, attributeValues) {
   if (!slug || !attributeValues || !Array.isArray(attributeValues)) return null;
   
-  // Try to find matching attribute by comparing slugs
+  // Normalize slug to lowercase for comparison
+  const normalizedSlug = slug.toLowerCase().trim();
+  
+  // Try to find matching attribute by comparing slugs (case-insensitive)
   for (const attrObj of attributeValues) {
     const attrLabel = attrObj.attribute;
     if (!attrLabel) continue;
     
     const attrSlug = attributeNameToSlug(attrLabel);
-    if (attrSlug === slug) {
+    if (attrSlug && attrSlug.toLowerCase().trim() === normalizedSlug) {
       return attrLabel;
     }
   }
@@ -200,7 +203,14 @@ export function matchSlugToAttributeName(slug, attributeValues) {
  * @returns {string} - URL with path segments
  */
 export function buildPathSegmentUrl(categorySlug, attributes = {}, brand = null) {
-  let path = categorySlug ? `/products/${encodeURIComponent(categorySlug)}` : "/products";
+  // ⚠️ /products route has been removed - must have a categorySlug
+  // If no categorySlug, return null or empty string to prevent navigation
+  if (!categorySlug) {
+    console.warn("⚠️ buildPathSegmentUrl called without categorySlug - /products route is removed");
+    return null; // Return null to prevent navigation to removed route
+  }
+  
+  let path = `/products/${encodeURIComponent(categorySlug)}`;
   
   // Sort attributes: Color first (if exists), then others
   const sortedAttrs = Object.entries(attributes).sort(([a], [b]) => {

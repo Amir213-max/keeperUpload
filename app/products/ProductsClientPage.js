@@ -10,7 +10,7 @@ import FilterDropdown from "../Componants/CheckboxDropdown ";
 import { useCurrency } from "../contexts/CurrencyContext";
 import PriceDisplay from "../components/PriceDisplay";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
-import { GET_CATEGORIES_QUERY } from "../lib/queries";
+import { GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
 import { useCategory } from "../contexts/CategoryContext";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
@@ -67,11 +67,14 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
   const isRTL = language === "ar";
 
   // Fetch categories
+  // 🔹 جلب التصنيفات فقط (بدون منتجات)
+  // IMPORTANT: Fetch only categories, not products. Fetching all products causes 503 errors.
   useEffect(() => {
     const fetchCategories = async () => {
       try {
         // Use API route proxy to avoid CORS issues
-        const data = await graphqlRequest(GET_CATEGORIES_QUERY);
+        // Use GET_CATEGORIES_ONLY_QUERY to fetch only categories (no products)
+        const data = await graphqlRequest(GET_CATEGORIES_ONLY_QUERY);
         setCategories(data.rootCategories || []);
       } catch (error) {
         console.error("Error fetching categories:", error);
@@ -88,11 +91,10 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     );
   }, [categories, products]);
 
-  // Set initial category and attributes from URL path or props
+  // Set initial category from URL path or props
   useEffect(() => {
-    // 🔹 قراءة slug و path segments من path (مثل /products/goalkeeper-jerseys/black/size-large)
+    // 🔹 قراءة slug من path (مثل /products/goalkeeper-jerseys/black/size-large)
     let pathSlug = null;
-    let pathSegments = [];
     
     if (pathname && pathname.startsWith('/products/')) {
       const pathWithoutBase = pathname.replace('/products/', '').split('?')[0];
@@ -100,7 +102,6 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
       
       if (parts.length > 0) {
         pathSlug = parts[0];
-        pathSegments = parts.slice(1); // بقية الأجزاء هي filters
       }
     }
     
@@ -126,15 +127,38 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     } else {
       setSelectedCategoryId(null);
     }
-    
-    // Parse path segments to attributes
-    if (pathSegments.length > 0 && attributeValues.length > 0) {
-      const parsedAttrs = parsePathSegments(pathSegments, attributeValues);
-      if (Object.keys(parsedAttrs).length > 0) {
-        setSelectedAttributes(parsedAttrs);
+  }, [pathname, setSelectedCategoryId, initialCategoryId, initialCategorySlug, categoriesWithProducts]);
+
+  // Parse path segments to attributes (separate effect to ensure attributeValues is ready)
+  useEffect(() => {
+    if (!pathname || !pathname.startsWith('/products/')) {
+      // If not on products page, clear attributes
+      if (pathname !== '/products' && !pathname.startsWith('/products/')) {
+        setSelectedAttributes({});
       }
+      return;
     }
-  }, [pathname, setSelectedCategoryId, initialCategoryId, initialCategorySlug, categoriesWithProducts, attributeValues]);
+    
+    const pathWithoutBase = pathname.replace('/products/', '').split('?')[0];
+    const parts = pathWithoutBase.split('/').filter(p => p);
+    
+    // Skip first part (category slug), rest are filters
+    const pathSegments = parts.slice(1);
+    
+    // Parse path segments to attributes (only if we have attributeValues)
+    if (pathSegments.length > 0 && attributeValues && attributeValues.length > 0) {
+      const parsedAttrs = parsePathSegments(pathSegments, attributeValues);
+      if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
+        console.log('📋 Parsed attributes from URL:', parsedAttrs);
+        setSelectedAttributes(parsedAttrs);
+      } else {
+        console.log('⚠️ No attributes parsed from path segments:', pathSegments, 'attributeValues:', attributeValues);
+      }
+    } else if (pathSegments.length === 0) {
+      // If no path segments, clear attributes only if we're not on a category page
+      // (keep attributes if they were set manually)
+    }
+  }, [pathname, attributeValues]);
 
   // Filter products
   useEffect(() => {
@@ -145,13 +169,21 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
       const attributesMatch = Object.entries(selectedAttributes).every(
         ([attrLabel, selectedVals]) => {
           if (!selectedVals || selectedVals.length === 0) return true;
-          const selectedLower = selectedVals.map((v) => String(v).toLowerCase());
-          return attrs.some(
-            (pav) =>
-              String(pav.attribute?.label || pav.attribute?.key || "")
-                .toLowerCase() === String(attrLabel).toLowerCase() &&
-              selectedLower.includes(String(pav.key ?? "").toLowerCase())
-          );
+          
+          // Convert selected values to lowercase for comparison
+          const selectedLower = selectedVals.map((v) => String(v).toLowerCase().trim());
+          
+          // Check if any product attribute matches
+          const hasMatch = attrs.some((pav) => {
+            const pavAttrLabel = String(pav.attribute?.label || pav.attribute?.key || "").toLowerCase().trim();
+            const pavValue = String(pav.key ?? "").toLowerCase().trim();
+            
+            // Match attribute label and value
+            return pavAttrLabel === String(attrLabel).toLowerCase().trim() &&
+                   selectedLower.includes(pavValue);
+          });
+          
+          return hasMatch;
         }
       );
 
@@ -197,11 +229,10 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
   useEffect(() => {
     const brandSlug = searchParams.get("brand");
     if (brandSlug) {
-      setSelectedBrand(fromSlug(brandSlug));
-    } else {
-      // Only clear if we're not in the middle of updating
-      // This prevents clearing brand when path segments change
+      const brandName = fromSlug(brandSlug);
+      setSelectedBrand(brandName);
     }
+    // Don't clear brand if it's not in URL - it might be set from other sources
   }, [searchParams]);
 
   // Update URL when filters change (using path segments format)
@@ -213,7 +244,10 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
       selectedBrand || null
     );
 
-    router.replace(newUrl, { scroll: false });
+    // Only update if newUrl is valid (not null) to prevent errors
+    if (newUrl) {
+      router.replace(newUrl, { scroll: false });
+    }
   }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router]);
 
   const indexOfLastProduct = currentPage * productsPerPage;
@@ -235,16 +269,17 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
         {/* Sidebar */}
         <div className="hidden lg:block lg:col-span-1 bg-black h-auto">
           <Sidebar
-            categories={categoriesWithProducts}
+            categories={categoriesWithProducts.length > 0 ? categoriesWithProducts : categories}
             onSelectCategory={(catId) => {
               // 🔹 استخدام router.push مع slug في path للتنقل بسلاسة
-              const selectedCat = categoriesWithProducts.find((c) => c.id === catId);
+              const allCategories = categoriesWithProducts.length > 0 ? categoriesWithProducts : categories;
+              const selectedCat = allCategories.find((c) => c.id === catId);
               if (selectedCat) {
               if (catId === selectedCategoryId) {
                 setSelectedCategoryId(null);
                 setSelectedCategoryName(null);
                   setSelectedCategorySlug(null);
-                  router.push('/products', { scroll: false });
+                  // Don't navigate to /products (page removed) - stay on current page
               } else {
                 setSelectedCategoryId(catId);
                   // تحديث URL مباشرة باستخدام path segments
@@ -253,7 +288,10 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
                     selectedAttributes,
                     selectedBrand || null
                   );
-                  router.push(newUrl, { scroll: false });
+                  // Only navigate if newUrl is valid (not null)
+                  if (newUrl) {
+                    router.push(newUrl, { scroll: false });
+                  }
                 }
               }
             }}
@@ -308,7 +346,7 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
 
               return (
                 <Link
-                  key={product.sku}
+                  key={product.id || product.sku}
                   href={`/product/${encodeURIComponent(product.sku)}`}
                   className="relative bg-gradient-to-br from-white to-neutral-300 shadow-lg overflow-hidden flex flex-col transition-all duration-300 hover:shadow-xl hover:-translate-y-1 block group"
                   onClick={(e) => {

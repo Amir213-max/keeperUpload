@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FaShoppingCart, FaUser, FaComments } from 'react-icons/fa';
 import { ChevronDown, ChevronRight, X } from "lucide-react";
-import { graphqlClient } from "../lib/graphqlClient";
-import { Root_CATEGORIES } from "../lib/queries";
+import { graphqlRequest } from "../lib/graphqlClientHelper";
+import { Root_CATEGORIES, GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
 import { motion, AnimatePresence } from "framer-motion";
 import CartSidebar from "./CartSidebar";
 import Image from "next/image";
@@ -14,7 +14,7 @@ import { useChat } from "../contexts/ChatContext";
 import { useTranslation } from "../contexts/TranslationContext";
 import { useAuth } from "../contexts/AuthContext";
 
-export default function Sidebar({ isOpen, setIsOpen, isRTL = false }) {
+export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: externalCategories, onSelectCategory: externalOnSelectCategory }) {
   const [categories, setCategories] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [openParentId, setOpenParentId] = useState(null);
@@ -23,52 +23,140 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false }) {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
 
+  // Memoize externalCategories to prevent dependency array changes
+  const externalCategoriesMemo = useMemo(() => {
+    return externalCategories && Array.isArray(externalCategories) && externalCategories.length > 0 
+      ? externalCategories 
+      : null;
+  }, [externalCategories]);
+
+  // 🔹 جلب جميع الـ categories من الـ API دائماً للـ Sidebar
+  // حتى لو كانت هناك externalCategories (محدودة للصفحة الحالية)
+  // الـ Sidebar يحتاج إلى جميع الـ categories لعرض جميع الـ parent categories
   useEffect(() => {
-    const fetchCategories = async () => {
+    const fetchAllCategories = async () => {
       try {
-        const data = await graphqlClient.request(Root_CATEGORIES);
-        setCategories(data?.rootCategories || []);
+        // Use API route proxy to avoid CORS issues
+        const data = await graphqlRequest(Root_CATEGORIES);
+        const allCategories = data?.rootCategories || [];
+        setCategories(allCategories);
       } catch (error) {
         console.error("❌ Error fetching categories:", error);
+        // Fallback: استخدام externalCategories إذا فشل الـ API
+        if (externalCategoriesMemo) {
+          setCategories(externalCategoriesMemo);
+        }
       }
     };
-    fetchCategories();
-  }, []);
+    fetchAllCategories();
+  }, []); // 🔹 جلب مرة واحدة فقط عند تحميل الـ Sidebar
 
-  const parentCategories = categories
-    .filter((cat) => cat.parent && cat.parent.name)
-    .reduce((acc, curr) => {
-      const exists = acc.find((p) => p.parent.id === curr.parent.id);
-      if (!exists) acc.push(curr);
-      return acc;
-    }, []);
+  // 🔹 جلب rootCategories (الرئيسية التي ليس لها parent) - نفس منطق الموبايل
+  const rootCategories = categories.filter((cat) => !cat.parent);
+  
+  // 🔹 جلب parentCategories (التي لديها parent و parent.name)
+  // مع التأكد من أن كل parent لديه subcategories فعلاً
+  const parentCategories = useMemo(() => {
+    const parents = categories
+      .filter((cat) => cat.parent && cat.parent.name)
+      .reduce((acc, curr) => {
+        const exists = acc.find((p) => p.parent.id === curr.parent.id);
+        if (!exists) acc.push(curr);
+        return acc;
+      }, []);
+    
+    // 🔹 فلترة: عرض فقط الـ parent categories التي لديها subcategories فعلاً
+    return parents.filter(item => {
+      const parent = item.parent;
+      const subCategories = categories.filter(sub => sub.parent?.id === parent.id);
+      return subCategories.length > 0; // فقط التي لديها subcategories
+    });
+  }, [categories]);
 
-  const handleParentClick = (parentId, parentName) => {
-    if (openParentId === parentId) {
-      setOpenParentId(null);
+  const handleParentClick = (parentId, parentName, event) => {
+    // 🔹 منع التنقل إذا تم الضغط على السهم فقط (للسماح بالفتح/الإغلاق)
+    const isArrowClick = event?.target?.closest('.chevron-icon') || 
+                         event?.target?.tagName === 'svg' || 
+                         event?.target?.tagName === 'path';
+    
+    if (isArrowClick) {
+      // فقط toggle للفتح/الإغلاق إذا تم الضغط على السهم
+      if (openParentId === parentId) {
+        setOpenParentId(null);
+      } else {
+        setOpenParentId(parentId);
+      }
+      return;
+    }
+
+    // 🔹 التنقل إلى صفحة الـ parent category
+    // البحث عن الـ parent category من categories (الـ parent هو category موجود في categories)
+    const parentCategory = categories.find((cat) => {
+      return String(cat.id) === String(parentId) || cat.id === parentId;
+    });
+
+    if (parentCategory?.slug) {
+      // Navigate to products page with parent category slug
+      const slug = encodeURIComponent(parentCategory.slug);
+      router.push(`/products/${slug}`, { scroll: false });
+      console.log("✅ Navigating to parent category:", `/products/${slug}`, parentCategory.name);
+      if (setIsOpen) setIsOpen(false); // إغلاق الـ drawer على الموبايل
     } else {
-      setOpenParentId(parentId);
-      router.push(`/${parentName.replace(/\s+/g, "")}`);
+      // Fallback: toggle للفتح/الإغلاق إذا لم يتم العثور على slug
+      console.warn("⚠️ Parent category not found or missing slug for ID:", parentId, "Name:", parentName);
+      // محاولة البحث في parentCategories للعثور على parent object
+      const parentFromParentCategories = parentCategories.find(item => 
+        String(item.parent?.id) === String(parentId) || item.parent?.id === parentId
+      );
+      
+      if (parentFromParentCategories?.parent?.name) {
+        // إذا كان لدينا parent object لكن بدون slug، نستخدم toggle فقط
+        console.log("ℹ️ Found parent but no slug, toggling instead");
+      }
+      
+      if (openParentId === parentId) {
+        setOpenParentId(null);
+      } else {
+        setOpenParentId(parentId);
+      }
     }
   };
 
   // دالة التنقل للـ Products مع التأكد من setIsOpen
   const handleSubcategoryClick = (subId) => {
     console.log("Subcategory ID clicked:", subId);
-    // 🔹 البحث عن slug من categories
-    const selectedCat = categories.find((cat) => cat.id === subId);
+    
+    // إذا كان هناك external onSelectCategory، استخدمه
+    if (externalOnSelectCategory) {
+      externalOnSelectCategory(subId);
+      if (setIsOpen) setIsOpen(false);
+      return;
+    }
+    
+    // Otherwise, use default behavior
+    // 🔹 البحث عن slug من categories وتحويل لصفحة slug
+    const selectedCat = categories.find((cat) => {
+      // Try to match by id (string or number)
+      return String(cat.id) === String(subId) || cat.id === subId;
+    });
+    
     if (selectedCat?.slug) {
-      router.push(`/products/${selectedCat.slug}`, { scroll: false });
+      // Navigate to products page with category slug
+      const slug = encodeURIComponent(selectedCat.slug);
+      router.push(`/products/${slug}`, { scroll: false });
+      console.log("✅ Navigating to:", `/products/${slug}`);
     } else {
-      router.push(`/products`, { scroll: false });
+      // If no slug found, show error and don't navigate
+      console.warn("⚠️ Category not found or missing slug for ID:", subId);
+      // Don't navigate to /products (page removed) - stay on current page
     }
     if (setIsOpen) setIsOpen(false); // ← آمنة حتى لو setIsOpen مش موجود
   };
 
   return (
     <>
-      {/* Sidebar للشاشات الكبيرة */}
-      <aside className={`hidden lg:block bg-black absolut text-white w-full min-h-screen py-4 px-3 font-sans ${isRTL ? "rtl" : "ltr"}`}>
+      {/* Sidebar للشاشات الكبيرة - يعرض parentCategories مع subcategories (نفس منطق الموبايل) */}
+      <aside className={`hidden lg:block bg-black text-white w-full min-h-screen py-4 px-3 font-sans ${isRTL ? "rtl" : "ltr"}`}>
         <SidebarContent
           parentCategories={parentCategories}
           categories={categories}
@@ -183,37 +271,48 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false }) {
   );
 }
 
-// محتوى القائمة
+// محتوى القائمة - نفس المنطق للموبايل والكمبيوتر
 function SidebarContent({ parentCategories, categories, openParentId, handleParentClick, onSelectCategory, isRTL, t }) {
+  // 🔹 عرض parentCategories (التي لديها parent و parent.name) مع subcategories المرتبطة بها
+  // نفس منطق الموبايل - يعمل على الشاشات الكبيرة أيضاً
+  if (parentCategories && parentCategories.length > 0) {
   return (
     <ul className="space-y-1">
       {parentCategories.map(item => {
         const parent = item.parent;
         const subCategories = categories.filter(sub => sub.parent?.id === parent.id);
         const isOpen = openParentId === parent.id;
+          const hasSubCategories = subCategories.length > 0;
 
         return (
           <li key={parent.id} className="border-b border-neutral-700 pb-1">
             <div
-              className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all"
-              onClick={() => handleParentClick(parent.id, parent.name)}
+                className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all rounded"
+              onClick={(e) => handleParentClick(parent.id, parent.name, e)}
               dir={isRTL ? "rtl" : "ltr"}
             >
-              <span className="text-sm font-medium hover:text-amber-400">{t(parent.name)}</span>
-              {subCategories.length > 0 && (
-                isOpen
-                  ? <ChevronDown size={16} />
-                  : <ChevronRight size={16} className={isRTL ? "rotate-180" : ""} />
+                <span className="text-sm font-medium text-white hover:text-amber-400 transition-colors">
+                  {t(parent.name)}
+                </span>
+                {hasSubCategories && (
+                  <div className="flex-shrink-0 chevron-icon">
+                    {isOpen ? (
+                      <ChevronDown size={16} className="text-neutral-400" />
+                    ) : (
+                      <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
+                    )}
+                  </div>
               )}
             </div>
 
-            {isOpen && subCategories.length > 0 && (
-              <ul className={`mt-1 space-y-1 border-l border-neutral-700 ${isRTL ? "ml-0 mr-4 border-l-0 border-r" : "ml-4 mr-0"}`}>
+              {isOpen && hasSubCategories && (
+                <ul className={`mt-1 mb-2 space-y-0.5 ${isRTL ? "mr-4 ml-0 border-r-2 border-neutral-700" : "ml-4 mr-0 border-l-2 border-neutral-700"} pl-2`}>
                 {subCategories.map(sub => (
                   <li
                     key={sub.id}
-                    className="px-3 py-1 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white transition-all"
-                    onClick={() => onSelectCategory(sub.id)}
+                      className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                      onClick={() => onSelectCategory && onSelectCategory(sub.id)}
+                      dir={isRTL ? "rtl" : "ltr"}
                   >
                     {t(sub.name)}
                   </li>
@@ -223,6 +322,22 @@ function SidebarContent({ parentCategories, categories, openParentId, handlePare
           </li>
         );
       })}
+      </ul>
+    );
+  }
+
+  // 🔹 Fallback نهائي: عرض جميع categories مباشرة
+  return (
+    <ul className="space-y-1">
+      {categories.map(cat => (
+        <li
+          key={cat.id}
+          className="px-3 py-2 text-sm text-white cursor-pointer hover:bg-neutral-800 hover:text-amber-400 transition-all border-b border-neutral-700"
+          onClick={() => onSelectCategory && onSelectCategory(cat.id)}
+        >
+          {t(cat.name)}
+        </li>
+      ))}
     </ul>
   );
 }

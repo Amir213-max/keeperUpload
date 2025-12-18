@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import BrandsSlider from "../Componants/brandsSplide_1";
 import FilterDropdown from "../Componants/CheckboxDropdown ";
 import { useCurrency } from "../contexts/CurrencyContext";
@@ -10,7 +10,7 @@ import ProductSlider from "../Componants/ProductSlider";
 import Sidebar from "../Componants/sidebar";
 import { useTranslation } from "../contexts/TranslationContext";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
-import { GET_CATEGORIES_QUERY } from "../lib/queries";
+import { GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
 import {
   attributeNameToSlug,
   attributeValuesToSlug,
@@ -18,10 +18,12 @@ import {
   matchSlugToAttributeName,
   toSlug,
   fromSlug,
+  buildPathSegmentUrl,
+  parsePathSegments,
 } from "../lib/urlSlugHelper";
 import { useCategory } from "../contexts/CategoryContext";
 import Loader from "../Componants/Loader";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
 export default function FootballClientPage({ products, brands, attributeValues, rootCategory }) {
   const searchParams = useSearchParams();
@@ -34,6 +36,9 @@ export default function FootballClientPage({ products, brands, attributeValues, 
   const [filteredProducts, setFilteredProducts] = useState(products);
   const [currentPage, setCurrentPage] = useState(1);
   const productsPerPage = 20;
+  
+  // 🔹 Ref to track if we're updating URL internally (to avoid infinite loop)
+  const isUpdatingUrlRef = useRef(false);
  const { loading: currencyLoading } = useCurrency();
 
   const { t, language } = useTranslation();
@@ -53,12 +58,14 @@ useEffect(() => {
   fetchRate();
   }, []);
 
-  // 🔹 جلب التصنيفات
+  // 🔹 جلب التصنيفات فقط (بدون منتجات)
+  // IMPORTANT: Fetch only categories, not products. Fetching all products causes 503 errors.
   useEffect(() => {
     const fetchCategories = async () => {
       try {
         // Use API route proxy to avoid CORS issues
-        const data = await graphqlRequest(GET_CATEGORIES_QUERY);
+        // Use GET_CATEGORIES_ONLY_QUERY to fetch only categories (no products)
+        const data = await graphqlRequest(GET_CATEGORIES_ONLY_QUERY);
         setCategories(data.rootCategories || []);
       } catch (error) {
         console.error("Error fetching categories:", error);
@@ -75,48 +82,52 @@ useEffect(() => {
     );
   }, [categories, products]);
 
-  // 🔹 قراءة الفلاتر من URL عند تحميل الصفحة (SEO-friendly slugs)
+  // 🔹 قراءة الفلاتر من URL path segments
   useEffect(() => {
-    // Read brand from URL (convert from slug)
+    if (isUpdatingUrlRef.current) return; // Skip if we're updating URL internally
+    
+    const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+    
+    // Read brand from query parameter (brand stays as query param)
     const brandSlug = searchParams.get("brand");
-    if (brandSlug) {
-      setSelectedBrand(fromSlug(brandSlug));
-    } else {
-      setSelectedBrand(null);
+    const newBrand = brandSlug ? fromSlug(brandSlug) : null;
+    if (newBrand !== selectedBrand) {
+      setSelectedBrand(newBrand);
     }
 
-    const categoryFromUrl = searchParams.get("category");
-    if (categoryFromUrl) {
-      // 🔹 البحث عن الكاتيجوري بالـ slug وتحويله لـ ID
-      const foundCategory = categoriesWithProducts.find(
-        (cat) => cat.slug === decodeURIComponent(categoryFromUrl)
-      );
-      if (foundCategory) {
-        setSelectedCategoryId(foundCategory.id);
-      }
-    } else {
-      // ✅ إذا لم يكن هناك category في URL، امسح selectedCategoryId
-      setSelectedCategoryId(null);
-    }
-
-    // Read attributes from URL (SEO-friendly slugs)
-    const attrs = {};
-    for (const [key, value] of searchParams.entries()) {
-      // Skip brand and category
-      if (key === "brand" || key === "category") continue;
+    // Read category from path segments (e.g., /products/category-slug)
+    if (pathname.startsWith('/products/')) {
+      const pathWithoutBase = pathname.replace('/products/', '').split('?')[0];
+      const parts = pathWithoutBase.split('/').filter(p => p);
       
-      // Match slug to actual attribute name
-      const attrName = matchSlugToAttributeName(key, attributeValues);
-      if (attrName) {
-        // Convert slug values back to readable format
-        const attrValues = slugToAttributeValues(value);
-        if (attrValues.length > 0) {
-          attrs[attrName] = attrValues;
+      if (parts.length > 0) {
+        const categorySlug = decodeURIComponent(parts[0]);
+        const foundCategory = categoriesWithProducts.find(
+          (cat) => cat.slug === categorySlug
+        );
+        if (foundCategory && foundCategory.id !== selectedCategoryId) {
+          setSelectedCategoryId(foundCategory.id);
         }
+      } else if (selectedCategoryId) {
+        setSelectedCategoryId(null);
+      }
+      
+      // Parse path segments to attributes (skip first part which is category)
+      const pathSegments = parts.slice(1);
+      if (pathSegments.length > 0 && attributeValues && attributeValues.length > 0) {
+        const parsedAttrs = parsePathSegments(pathSegments, attributeValues);
+        if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
+          const currentAttrsStr = JSON.stringify(selectedAttributes);
+          const newAttrsStr = JSON.stringify(parsedAttrs);
+          if (currentAttrsStr !== newAttrsStr) {
+            setSelectedAttributes(parsedAttrs);
+          }
+        }
+      } else if (pathSegments.length === 0 && Object.keys(selectedAttributes).length > 0) {
+        setSelectedAttributes({});
       }
     }
-    setSelectedAttributes(attrs);
-  }, [searchParams, setSelectedCategoryId, categoriesWithProducts, attributeValues]);
+  }, [searchParams, setSelectedCategoryId, categoriesWithProducts, attributeValues, selectedBrand, selectedCategoryId, selectedAttributes]);
 
   // 🔹 فلترة المنتجات حسب الفلاتر
   useEffect(() => {
@@ -159,33 +170,40 @@ useEffect(() => {
     setSelectedCategorySlug(cat?.slug || null);
   }, [selectedCategoryId, categoriesWithProducts]);
 
-  // 🔹 تحديث الـ URL عند تغيير الفلاتر (SEO-friendly format)
+  // 🔹 تحديث الـ URL عند تغيير الفلاتر (using path segments format)
+  // ⚠️ IMPORTANT: Only update URL if we have a category slug - /products route is removed
   useEffect(() => {
-    const params = new URLSearchParams();
-
-    // Add brand as slug
-    if (selectedBrand) {
-      params.set("brand", toSlug(selectedBrand));
+    // Don't update URL if we're on a specific page (like /FootballBoots) and no category is selected
+    // This prevents unwanted redirects to removed /products route
+    if (!selectedCategorySlug && pathname !== '/products' && !pathname.startsWith('/products/')) {
+      return; // Stay on current page, don't redirect
     }
     
-    if (selectedCategoryId && selectedCategorySlug) {
-      // 🔹 استخدام slug بدل الـ ID في URL
-      params.set("category", encodeURIComponent(selectedCategorySlug));
+    // Build URL with path segments: /products/[category slug]/[attributes]
+    const newUrl = buildPathSegmentUrl(
+      selectedCategorySlug || null,
+      selectedAttributes,
+      selectedBrand || null
+    );
+    
+    // If buildPathSegmentUrl returns null (no categorySlug), don't update URL
+    if (!newUrl) {
+      return;
     }
-
-    // Add attributes as SEO-friendly slugs (no attr_ prefix, no commas, no underscores)
-    Object.entries(selectedAttributes).forEach(([attr, values]) => {
-      if (values && values.length > 0) {
-        const slugName = attributeNameToSlug(attr);
-        const slugValues = attributeValuesToSlug(values);
-        if (slugName && slugValues) {
-          params.set(slugName, slugValues);
-        }
-      }
-    });
-
-    router.replace(`?${params.toString()}`, { scroll: false });
-  }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router]);
+    
+    // Check if URL actually changed to avoid unnecessary updates
+    const currentUrl = typeof window !== "undefined" ? window.location.pathname + window.location.search : "";
+    if (currentUrl !== newUrl && newUrl !== "/products" && newUrl !== null) {
+      // Only update if newUrl is valid and not the removed /products route
+      isUpdatingUrlRef.current = true;
+      router.replace(newUrl, { scroll: false });
+      
+      // Reset flag after a short delay to allow URL to update
+      setTimeout(() => {
+        isUpdatingUrlRef.current = false;
+      }, 100);
+    }
+  }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router, pathname]);
 
   const indexOfLastProduct = currentPage * productsPerPage;
   const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
@@ -217,24 +235,34 @@ useEffect(() => {
             categories={categoriesWithProducts}
             onSelectCategory={(catId) => {
               // 🔹 استخدام router.push مع slug للتنقل بسلاسة
-              const selectedCat = categoriesWithProducts.find((c) => c.id === catId);
+              const selectedCat = categoriesWithProducts.find((c) => {
+                return String(c.id) === String(catId) || c.id === catId;
+              });
+              
               if (selectedCat) {
                 if (catId === selectedCategoryId) {
+                  // إذا تم الضغط على نفس الكاتيجوري، إلغاء التحديد
                   setSelectedCategoryId(null);
                   setSelectedCategoryName(null);
                   setSelectedCategorySlug(null);
                   router.push('/FootballBoots', { scroll: false });
                 } else {
+                  // تحديث الـ state أولاً
                   setSelectedCategoryId(catId);
-                  // تحديث URL مباشرة بالـ slug
-                  const params = new URLSearchParams();
-                  if (selectedBrand) params.set("brand", selectedBrand);
-                  params.set("category", encodeURIComponent(selectedCat.slug));
-                  Object.entries(selectedAttributes).forEach(([attr, values]) => {
-                    if (values.length) params.set(`attr_${attr}`, values.join(","));
-                  });
-                  router.push(`/FootballBoots?${params.toString()}`, { scroll: false });
+                  
+                  // Navigate to /products/[category slug] with attributes as path segments
+                  const newUrl = buildPathSegmentUrl(
+                    selectedCat.slug,
+                    selectedAttributes,
+                    selectedBrand || null
+                  );
+                  // Only navigate if newUrl is valid (not null)
+                  if (newUrl) {
+                    router.push(newUrl, { scroll: false });
+                  }
                 }
+              } else {
+                console.warn("⚠️ Category not found for ID:", catId);
               }
             }}
             isRTL={isRTL}
@@ -292,7 +320,7 @@ useEffect(() => {
 
     return (
       <Link
-        key={product.sku}
+        key={product.id || product.sku}
         href={`/product/${encodeURIComponent(product.sku)}`}
         className="relative bg-gradient-to-br from-white to-neutral-300 shadow-lg overflow-hidden flex flex-col transition-all duration-300 hover:shadow-xl hover:-translate-y-1 block group"
         onClick={(e) => {

@@ -122,8 +122,8 @@ useEffect(() => {
               <FaSearch size={20} />
             </button>
 
-            {/* 🔔 Notifications */}
-            {token && <NavbarNotifications userToken={token} />}
+            {/* 🔔 Notifications - مخفية مؤقتاً */}
+            {/* {token && <NavbarNotifications userToken={token} />} */}
 
             {/* ✅ Search Modal */}
             {searchOpen && (

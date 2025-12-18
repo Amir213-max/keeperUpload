@@ -1,14 +1,23 @@
 import { Suspense } from "react";
 import { graphqlClient } from "../lib/graphqlClient";
 import { PRODUCTS_BY_CATEGORY_QUERY } from "../lib/queries";
+import { removeDuplicateProducts } from "../lib/removeDuplicateProducts";
 import EquipmentClientPage from "./EquipmenClientpage";
 import Loader from "../Componants/Loader";
 
 const FOOTBALL_BOOTS_CATEGORY_ID = "52"; 
 // تقدر تعدل الـ ID أو تخليها Array وتعرض أكتر من SubCategory لو حابب
 
+/**
+ * IMPORTANT: 
+ * - The GraphQL schema does NOT support `limit` on `rootCategory.products`
+ * - Must fetch products by categoryId to prevent 503 errors
+ * - Client-side slicing (24 items) is applied after fetching
+ */
 const fetchProductsByCategory = async () => {
-  const variables = { categoryId: FOOTBALL_BOOTS_CATEGORY_ID };
+  const variables = { 
+    categoryId: FOOTBALL_BOOTS_CATEGORY_ID
+  };
   const data = await graphqlClient.request(PRODUCTS_BY_CATEGORY_QUERY, variables);
 
   // هنجيب المنتجات الخاصة بالكاتيجوري + المنتجات الخاصة بالسب كاتيجوريز
@@ -22,8 +31,15 @@ const fetchProductsByCategory = async () => {
     });
   }
 
+  // ✅ إزالة المنتجات المكررة بناءً على product.id
+  products = removeDuplicateProducts(products);
+
   // 🟢 عرض المنتجات من الأحدث إلى الأقدم
   products = products.reverse();
+  
+  // ✅ Client-side limiting: Slice to 24 products for product grids
+  const DEFAULT_PRODUCT_LIMIT = 24;
+  products = products.slice(0, DEFAULT_PRODUCT_LIMIT);
 
   return { products, rootCategory: data.rootCategory };
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import BrandsSlider from "../Componants/brandsSplide_1";
 import FilterDropdown from "../Componants/CheckboxDropdown ";
 import { useCurrency } from "../contexts/CurrencyContext";
@@ -10,7 +10,7 @@ import ProductSlider from "../Componants/ProductSlider";
 import Sidebar from "../Componants/sidebar";
 import { useTranslation } from "../contexts/TranslationContext";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
-import { GET_CATEGORIES_QUERY } from "../lib/queries";
+import { GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
 import {
   attributeNameToSlug,
   attributeValuesToSlug,
@@ -18,21 +18,53 @@ import {
   matchSlugToAttributeName,
   toSlug,
   fromSlug,
+  buildPathSegmentUrl,
+  parsePathSegments,
 } from "../lib/urlSlugHelper";
 import { useCategory } from "../contexts/CategoryContext";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
 export default function ApparelClientPage({ products, brands, attributeValues, rootCategory }) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const [categories, setCategories] = useState([]);
-  const [selectedBrand, setSelectedBrand] = useState(null);
-  const [selectedAttributes, setSelectedAttributes] = useState({});
+  const [selectedBrand, setSelectedBrand] = useState(() => {
+    // Initialize from URL if available
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const brandSlug = urlParams.get("brand");
+      return brandSlug ? fromSlug(brandSlug) : null;
+    }
+    return null;
+  });
+  const [selectedAttributes, setSelectedAttributes] = useState(() => {
+    // Initialize from URL if available
+    if (typeof window !== "undefined" && attributeValues && attributeValues.length > 0) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const attrs = {};
+      for (const [key, value] of urlParams.entries()) {
+        if (key === "brand" || key === "category") continue;
+        const attrName = matchSlugToAttributeName(key, attributeValues);
+        if (attrName) {
+          const attrValues = slugToAttributeValues(value);
+          if (attrValues.length > 0) {
+            attrs[attrName] = attrValues;
+          }
+        }
+      }
+      return attrs;
+    }
+    return {};
+  });
   const { selectedCategoryId, setSelectedCategoryId } = useCategory();
   const [selectedCategoryName, setSelectedCategoryName] = useState(null);
   const [filteredProducts, setFilteredProducts] = useState(products);
   const [currentPage, setCurrentPage] = useState(1);
   const productsPerPage = 20;
+  
+  // 🔹 Ref to track if we're updating URL internally (to avoid infinite loop)
+  const isUpdatingUrlRef = useRef(false);
  const { loading: currencyLoading } = useCurrency();
 
   const { t, language } = useTranslation();
@@ -52,12 +84,14 @@ useEffect(() => {
   fetchRate();
   }, []);
 
-  // 🔹 جلب التصنيفات
+  // 🔹 جلب التصنيفات فقط (بدون منتجات)
+  // IMPORTANT: Fetch only categories, not products. Fetching all products causes 503 errors.
   useEffect(() => {
     const fetchCategories = async () => {
       try {
         // Use API route proxy to avoid CORS issues
-        const data = await graphqlRequest(GET_CATEGORIES_QUERY);
+        // Use GET_CATEGORIES_ONLY_QUERY to fetch only categories (no products)
+        const data = await graphqlRequest(GET_CATEGORIES_ONLY_QUERY);
         setCategories(data.rootCategories || []);
       } catch (error) {
         console.error("Error fetching categories:", error);
@@ -74,48 +108,99 @@ useEffect(() => {
     );
   }, [categories, products]);
 
-  // 🔹 قراءة الفلاتر من URL عند تحميل الصفحة (SEO-friendly slugs)
+  // 🔹 قراءة brand من query parameter (only update if changed)
   useEffect(() => {
-    // Read brand from URL (convert from slug)
+    if (isUpdatingUrlRef.current) return; // Skip if we're updating URL internally
+    
     const brandSlug = searchParams.get("brand");
-    if (brandSlug) {
-      setSelectedBrand(fromSlug(brandSlug));
-    } else {
-      setSelectedBrand(null);
+    const newBrand = brandSlug ? fromSlug(brandSlug) : null;
+    
+    // Only update if different to avoid unnecessary re-renders
+    if (newBrand !== selectedBrand) {
+      setSelectedBrand(newBrand);
     }
+  }, [searchParams, selectedBrand]);
 
-    const categoryFromUrl = searchParams.get("category");
-    if (categoryFromUrl) {
-      // 🔹 البحث عن الكاتيجوري بالـ slug وتحويله لـ ID
-      const foundCategory = categoriesWithProducts.find(
-        (cat) => cat.slug === decodeURIComponent(categoryFromUrl)
-      );
-      if (foundCategory) {
-        setSelectedCategoryId(foundCategory.id);
+  // 🔹 قراءة category من URL path segments
+  useEffect(() => {
+    if (isUpdatingUrlRef.current || !pathname || !categoriesWithProducts.length) return;
+    
+    // Try to read from path first (e.g., /products/category-slug)
+    if (pathname.startsWith('/products/')) {
+      const pathWithoutBase = pathname.replace('/products/', '').split('?')[0];
+      const parts = pathWithoutBase.split('/').filter(p => p);
+      
+      if (parts.length > 0) {
+        const categorySlug = decodeURIComponent(parts[0]);
+        const foundCategory = categoriesWithProducts.find(
+          (cat) => cat.slug === categorySlug
+        );
+        if (foundCategory && foundCategory.id !== selectedCategoryId) {
+          setSelectedCategoryId(foundCategory.id);
+        }
+      } else if (selectedCategoryId) {
+        setSelectedCategoryId(null);
       }
     } else {
-      // ✅ إذا لم يكن هناك category في URL، امسح selectedCategoryId
-      setSelectedCategoryId(null);
+      // Fallback to query params for backward compatibility
+      const categoryFromUrl = searchParams.get("category");
+      if (categoryFromUrl) {
+        const foundCategory = categoriesWithProducts.find(
+          (cat) => cat.slug === decodeURIComponent(categoryFromUrl)
+        );
+        if (foundCategory && foundCategory.id !== selectedCategoryId) {
+          setSelectedCategoryId(foundCategory.id);
+        }
+      } else if (selectedCategoryId) {
+        setSelectedCategoryId(null);
+      }
     }
+  }, [pathname, searchParams, setSelectedCategoryId, categoriesWithProducts, selectedCategoryId]);
 
-    // Read attributes from URL (SEO-friendly slugs)
-    const attrs = {};
-    for (const [key, value] of searchParams.entries()) {
-      // Skip brand and category
-      if (key === "brand" || key === "category") continue;
+  // 🔹 قراءة attributes من URL path segments (only when URL actually changes)
+  useEffect(() => {
+    if (isUpdatingUrlRef.current || !pathname || !attributeValues || attributeValues.length === 0) return;
+    
+    // Parse path segments from URL (e.g., /products/category-slug/black/size-large)
+    if (pathname.startsWith('/products/')) {
+      const pathWithoutBase = pathname.replace('/products/', '').split('?')[0];
+      const parts = pathWithoutBase.split('/').filter(p => p);
       
-      // Match slug to actual attribute name
-      const attrName = matchSlugToAttributeName(key, attributeValues);
-      if (attrName) {
-        // Convert slug values back to readable format
-        const attrValues = slugToAttributeValues(value);
-        if (attrValues.length > 0) {
-          attrs[attrName] = attrValues;
+      // First part is category slug, rest are attribute filters
+      const pathSegments = parts.slice(1); // Skip category slug
+      
+      // Parse path segments to attributes
+      if (pathSegments.length > 0) {
+        const parsedAttrs = parsePathSegments(pathSegments, attributeValues);
+        if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
+          const currentAttrsStr = JSON.stringify(selectedAttributes);
+          const newAttrsStr = JSON.stringify(parsedAttrs);
+          if (currentAttrsStr !== newAttrsStr) {
+            setSelectedAttributes(parsedAttrs);
+          }
+        }
+      } else if (Object.keys(selectedAttributes).length > 0) {
+        // If no path segments but we have attributes, clear them
+        setSelectedAttributes({});
+      }
+    } else {
+      // Also check query params for backward compatibility
+      const attrs = {};
+      for (const [key, value] of searchParams.entries()) {
+        if (key === "brand" || key === "category") continue;
+        const attrName = matchSlugToAttributeName(key, attributeValues);
+        if (attrName && value) {
+          const attrValues = slugToAttributeValues(value);
+          if (attrValues.length > 0) {
+            attrs[attrName] = attrValues;
+          }
         }
       }
+      if (Object.keys(attrs).length > 0) {
+        setSelectedAttributes(attrs);
+      }
     }
-    setSelectedAttributes(attrs);
-  }, [searchParams, setSelectedCategoryId, categoriesWithProducts, attributeValues]);
+  }, [pathname, searchParams, attributeValues, selectedAttributes]);
 
   // 🔹 فلترة المنتجات حسب الفلاتر
   useEffect(() => {
@@ -126,13 +211,21 @@ useEffect(() => {
       const attributesMatch = Object.entries(selectedAttributes).every(
         ([attrLabel, selectedVals]) => {
           if (!selectedVals || selectedVals.length === 0) return true;
-          const selectedLower = selectedVals.map((v) => String(v).toLowerCase());
-          return attrs.some(
-            (pav) =>
-              String(pav.attribute?.label || pav.attribute?.key || "")
-                .toLowerCase() === String(attrLabel).toLowerCase() &&
-              selectedLower.includes(String(pav.key ?? "").toLowerCase())
-          );
+          
+          // Convert selected values to lowercase for comparison
+          const selectedLower = selectedVals.map((v) => String(v).toLowerCase().trim());
+          
+          // Check if any product attribute matches
+          const hasMatch = attrs.some((pav) => {
+            const pavAttrLabel = String(pav.attribute?.label || pav.attribute?.key || "").toLowerCase().trim();
+            const pavValue = String(pav.key ?? "").toLowerCase().trim();
+            
+            // Match attribute label and value
+            return pavAttrLabel === String(attrLabel).toLowerCase().trim() &&
+                   selectedLower.includes(pavValue);
+          });
+          
+          return hasMatch;
         }
       );
 
@@ -158,33 +251,40 @@ useEffect(() => {
     setSelectedCategorySlug(cat?.slug || null);
   }, [selectedCategoryId, categoriesWithProducts]);
 
-  // 🔹 تحديث الـ URL عند تغيير الفلاتر (SEO-friendly format)
+  // 🔹 تحديث الـ URL عند تغيير الفلاتر (using path segments format)
+  // ⚠️ IMPORTANT: Only update URL if we have a category slug - /products route is removed
   useEffect(() => {
-    const params = new URLSearchParams();
-
-    // Add brand as slug
-    if (selectedBrand) {
-      params.set("brand", toSlug(selectedBrand));
+    // Don't update URL if we're on a specific page (like /Goalkeeperapparel) and no category is selected
+    // This prevents unwanted redirects to removed /products route
+    if (!selectedCategorySlug && pathname !== '/products' && !pathname.startsWith('/products/')) {
+      return; // Stay on current page, don't redirect
     }
     
-    if (selectedCategoryId && selectedCategorySlug) {
-      // 🔹 استخدام slug بدل الـ ID في URL
-      params.set("category", encodeURIComponent(selectedCategorySlug));
+    // Build URL with path segments: /products/[category slug]/[attributes]
+    const newUrl = buildPathSegmentUrl(
+      selectedCategorySlug || null,
+      selectedAttributes,
+      selectedBrand || null
+    );
+    
+    // If buildPathSegmentUrl returns null (no categorySlug), don't update URL
+    if (!newUrl) {
+      return;
     }
-
-    // Add attributes as SEO-friendly slugs (no attr_ prefix, no commas, no underscores)
-    Object.entries(selectedAttributes).forEach(([attr, values]) => {
-      if (values && values.length > 0) {
-        const slugName = attributeNameToSlug(attr);
-        const slugValues = attributeValuesToSlug(values);
-        if (slugName && slugValues) {
-          params.set(slugName, slugValues);
-        }
-      }
-    });
-
-    router.replace(`?${params.toString()}`, { scroll: false });
-  }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router]);
+    
+    // Check if URL actually changed to avoid unnecessary updates
+    const currentUrl = typeof window !== "undefined" ? window.location.pathname + window.location.search : "";
+    if (currentUrl !== newUrl && newUrl !== "/products" && newUrl !== null) {
+      // Only update if newUrl is valid and not the removed /products route
+      isUpdatingUrlRef.current = true;
+      router.replace(newUrl, { scroll: false });
+      
+      // Reset flag after a short delay to allow URL to update
+      setTimeout(() => {
+        isUpdatingUrlRef.current = false;
+      }, 100);
+    }
+  }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router, pathname]);
 
   const indexOfLastProduct = currentPage * productsPerPage;
   const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
@@ -215,24 +315,31 @@ useEffect(() => {
             categories={categoriesWithProducts}
             onSelectCategory={(catId) => {
               // 🔹 استخدام router.push مع slug للتنقل بسلاسة
-              const selectedCat = categoriesWithProducts.find((c) => c.id === catId);
+              const selectedCat = categoriesWithProducts.find((c) => {
+                return String(c.id) === String(catId) || c.id === catId;
+              });
+              
               if (selectedCat) {
                 if (catId === selectedCategoryId) {
+                  // إذا تم الضغط على نفس الكاتيجوري، إلغاء التحديد
                   setSelectedCategoryId(null);
                   setSelectedCategoryName(null);
                   setSelectedCategorySlug(null);
                   router.push('/Goalkeeperapparel', { scroll: false });
                 } else {
+                  // تحديث الـ state أولاً
                   setSelectedCategoryId(catId);
-                  // تحديث URL مباشرة بالـ slug
-                  const params = new URLSearchParams();
-                  if (selectedBrand) params.set("brand", selectedBrand);
-                  params.set("category", encodeURIComponent(selectedCat.slug));
-                  Object.entries(selectedAttributes).forEach(([attr, values]) => {
-                    if (values.length) params.set(`attr_${attr}`, values.join(","));
-                  });
-                  router.push(`/Goalkeeperapparel?${params.toString()}`, { scroll: false });
+                  
+                  // Navigate to /products/[category slug] with attributes as path segments
+                  const newUrl = buildPathSegmentUrl(
+                    selectedCat.slug,
+                    selectedAttributes,
+                    selectedBrand || null
+                  );
+                  router.push(newUrl, { scroll: false });
                 }
+              } else {
+                console.warn("⚠️ Category not found for ID:", catId);
               }
             }}
             isRTL={isRTL} // ✅ تمرير اتجاه اللغة
@@ -289,8 +396,8 @@ useEffect(() => {
 
     return (
       <Link
-        key={product.sku}
-        href={`/product/${encodeURIComponent(product.sku)}`}
+      key={product.id || product.sku}
+              href={`/product/${encodeURIComponent(product.sku)}`}
         className="relative bg-gradient-to-br from-white to-neutral-300 shadow-lg overflow-hidden flex flex-col transition-all duration-300 hover:shadow-xl hover:-translate-y-1 block group"
         onClick={(e) => {
           // اضغط على الصورة → افتح صفحة المنتج

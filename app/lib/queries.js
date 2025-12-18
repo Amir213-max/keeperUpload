@@ -71,7 +71,15 @@ export const GET_PROFILE = gql`
   }
 `;
 
-// ✅ جلب المنتجات (مع إمكانية تحديد limit/offset)
+/**
+ * ⚠️ DEPRECATED: This query fetches products without categoryId, causing 503 errors.
+ * 
+ * DO NOT USE: Fetching all products without categoryId causes server overload.
+ * 
+ * Use instead:
+ * - PRODUCTS_BY_CATEGORY_QUERY with a specific categoryId
+ * - PRODUCTS_BY_CATEGORY_FILTERED_QUERY for pagination with categoryId
+ */
 export const PRODUCTS_QUERY = gql`
   query Products($limit: Int, $offset: Int) {
     products(limit: $limit, offset: $offset) {
@@ -95,43 +103,51 @@ export const PRODUCTS_QUERY = gql`
   }
 `;
 
-// ✅ جلب المنتجات حسب الكاتيجوري (رئيسي أو فرعي)
+/**
+ * ✅ جلب المنتجات حسب الكاتيجوري
+ * 
+ * IMPORTANT: 
+ * - The GraphQL schema does NOT support `limit` on `rootCategory.products`
+ * - Must use `productsByCategory(categoryId: $categoryId)` at root level
+ * - Client-side slicing (12-24 items) should be applied after fetching
+ * - Fetching products without categoryId causes 503 errors
+ * 
+ * This query fetches ONLY essential fields for product listing pages.
+ * Heavy fields (descriptions, full attributes) should be fetched on product detail pages only.
+ */
 export const PRODUCTS_BY_CATEGORY_QUERY = gql`
 query ProductsByCategory($categoryId: ID!) {
+  # Get category info
   rootCategory(id: $categoryId) {
     id
     name
     slug
     image
+    # ⚠️ rootCategory.products does NOT support limit argument
+    # Fetch products using productsByCategory at root level instead
     products {
-    created_at
-      updated_at
-      productBadges{
-        label
-        color
-      }
-      list_price_amount
-      list_price_currency
-      relative_list_price_difference
-      price_range_from
-      price_range_to
-      price_range_currency
-      price_range_exact_amount
-      price_range_maximum_amount
-      price_range_minimum_amount
       id
       name
       sku
-      description
+      images
+      list_price_amount
+      list_price_currency
+      price_range_exact_amount
+    created_at
+      updated_at
+      productBadges {
+        label
+        color
+      }
+      brand {
+      id
+      name
+      }
       rootCategories {
         id
         name
       }
-      images
-      brand{
-        id
-        name
-      }
+      # Essential attributes only (for filtering)
       productAttributeValues {
         id
         key
@@ -141,32 +157,107 @@ query ProductsByCategory($categoryId: ID!) {
           key
         }
       }
-      
     }
     subCategories {
       id
       name
       slug
+      # ⚠️ subCategories.products does NOT support limit argument
       products {
         id
         name
         sku
-      
-        
         images
+        list_price_amount
+        list_price_currency
+        price_range_exact_amount
+        created_at
+        updated_at
+        productBadges {
+          label
+          color
+        }
+        brand {
+          id
+          name
+        }
+        rootCategories {
+          id
+          name
+        }
+        # Essential attributes only (for filtering)
         productAttributeValues {
           id
-          
+          key
           attribute {
             id
             label
+            key
           }
         }
       }
     }
   }
 }
+`;
 
+/**
+ * ✅ جلب المنتجات حسب الكاتيجوري باستخدام productsByCategory (root level)
+ * 
+ * This is the preferred method as it supports limit/offset at the root level.
+ * Use this for pagination and limiting results.
+ */
+export const PRODUCTS_BY_CATEGORY_FILTERED_QUERY = gql`
+query ProductsByCategoryFiltered($categoryId: ID!, $limit: Int, $offset: Int) {
+  # Use productsByCategory at root level (supports limit/offset)
+  productsByCategory(category_id: $categoryId, limit: $limit, offset: $offset) {
+    id
+    name
+    sku
+    images
+    list_price_amount
+    list_price_currency
+    price_range_exact_amount
+    created_at
+    updated_at
+    productBadges {
+      label
+      color
+    }
+    brand {
+      id
+      name
+    }
+    rootCategories {
+      id
+      name
+      slug
+    }
+    # Essential attributes only (for filtering)
+    productAttributeValues {
+      id
+      key
+      attribute {
+        id
+        label
+        key
+      }
+    }
+  }
+  
+  # Also get category info
+  rootCategory(id: $categoryId) {
+    id
+    name
+    slug
+    image
+    subCategories {
+      id
+      name
+      slug
+    }
+  }
+}
 `;
 
 export const PRODUCTS_WITH_FILTERS_QUERY = gql`
@@ -206,6 +297,36 @@ export const PRODUCTS_WITH_FILTERS_QUERY = gql`
   }
 `;
 
+/**
+ * ✅ جلب التصنيفات فقط (بدون منتجات)
+ * 
+ * IMPORTANT: This query fetches ONLY categories, not products.
+ * Fetching all products without categoryId and limit causes 503 errors.
+ * 
+ * To fetch products, use PRODUCTS_BY_CATEGORY_QUERY with a specific categoryId and limit.
+ */
+export const GET_CATEGORIES_ONLY_QUERY = gql`
+query GetCategoriesOnly {
+  rootCategories {
+    id
+    name
+    slug
+    image
+  }
+}
+`;
+
+/**
+ * ⚠️ DEPRECATED: This query fetches products without limits, causing 503 errors.
+ * 
+ * DO NOT USE: This query will cause GraphQL 503 errors due to fetching all products.
+ * 
+ * Use instead:
+ * - GET_CATEGORIES_ONLY_QUERY for categories only
+ * - PRODUCTS_BY_CATEGORY_QUERY with categoryId and limit for products
+ * 
+ * This query is kept for backward compatibility but should be removed.
+ */
 export const GET_CATEGORIES_QUERY = gql`
 query GetCategories {
   rootCategories {
@@ -215,8 +336,8 @@ query GetCategories {
     image
   }
   products {
-    created_at
-    updated_at
+  created_at
+      updated_at
  
     list_price_amount
     list_price_currency
@@ -251,6 +372,13 @@ query GetCategories {
 }
 `;
 
+/**
+ * ⚠️ DEPRECATED: This query fetches all products without limits, causing 503 errors.
+ * 
+ * DO NOT USE: Fetching all products without categoryId and limit causes server overload.
+ * 
+ * Use instead: PRODUCTS_BY_CATEGORY_QUERY with a specific categoryId and limit.
+ */
 export const PRODUCTS_SHOES_QUERY = gql` 
 
 
@@ -312,6 +440,14 @@ export const GET_PAGE_BY_SLUG = gql`
   }
 `;
 
+/**
+ * ⚠️ DEPRECATED: This query fetches all products without limits, causing 503 errors.
+ * 
+ * DO NOT USE: Fetching all products without categoryId and limit causes server overload.
+ * 
+ * Use instead: PRODUCTS_BY_CATEGORY_QUERY with a specific categoryId and limit.
+ * Filter products with badges on the client side after fetching.
+ */
 export const PRODUCTS_SALES_QUERY = gql` 
 
 
@@ -793,6 +929,14 @@ export const Root_CATEGORIES = gql`
 
 
 
+/**
+ * ⚠️ DEPRECATED: This query fetches products without categoryId and limit.
+ * 
+ * DO NOT USE: Fetching products without categoryId and limit causes 503 errors.
+ * 
+ * Use instead: PRODUCTS_BY_CATEGORY_QUERY with categoryId and limit,
+ * then filter by brand on the client side.
+ */
 export const FILTER_PRODUCTS_BY_BRAND = gql`
   query filterProductsByBrand($filters: ProductFiltersInput) {
     products(filters: $filters) {
