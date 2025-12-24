@@ -192,7 +192,7 @@ export default function HomePageBlocks() {
                 className={`relative overflow-hidden bg-black w-full group
                   ${
                     isTwoBanners
-                      ? "aspect-[800/741] md:aspect-[3/2]"
+                      ? "aspect-[800/741] md:aspect-[5/3]"
                       : "aspect-[800/741] md:aspect-[2500/833]"
                   }
                 `}

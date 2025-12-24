@@ -9,6 +9,7 @@ import '@splidejs/react-splide/css';
 export default function FilterDropdown({ attributeValues, onFilterChange }) {
   const [selectedFilters, setSelectedFilters] = useState({});
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [showAllFilters, setShowAllFilters] = useState(false);
   const { t, lang } = useTranslation();
   const isRTL = lang === 'ar';
 
@@ -17,11 +18,15 @@ export default function FilterDropdown({ attributeValues, onFilterChange }) {
     onFilterChange(selectedFilters);
   }, [selectedFilters, onFilterChange]);
 
+  // على الديسكتوب، نعرض 4 فلاتر فقط في البداية
+  const visibleFilters = showAllFilters ? attributeValues : attributeValues.slice(0, 4);
+  const hasMoreFilters = attributeValues.length > 4;
+
   return (
     <div className="space-y-4 overflow-x-hidden w-full">
       {/* Desktop View - Flex Wrap */}
-      <div className="hidden md:flex flex-wrap gap-2">
-        {attributeValues.map(({ attribute, values }) => (
+      <div className="hidden md:flex flex-wrap gap-2 items-center">
+        {visibleFilters.map(({ attribute, values }) => (
           <Dropdown
             key={attribute}
             attribute={attribute}
@@ -35,6 +40,22 @@ export default function FilterDropdown({ attributeValues, onFilterChange }) {
             }}
           />
         ))}
+        {hasMoreFilters && !showAllFilters && (
+          <button
+            onClick={() => setShowAllFilters(true)}
+            className="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 border border-gray-600 shadow hover:shadow-md focus:outline-none rounded transition-all"
+          >
+            {t("More Filters")} ({attributeValues.length - 4})
+          </button>
+        )}
+        {showAllFilters && hasMoreFilters && (
+          <button
+            onClick={() => setShowAllFilters(false)}
+            className="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 border border-gray-600 shadow hover:shadow-md focus:outline-none rounded transition-all"
+          >
+            {t("Show Less")}
+          </button>
+        )}
       </div>
 
       {/* Mobile View - Slider */}
