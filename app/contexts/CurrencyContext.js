@@ -14,19 +14,11 @@ export const useCurrency = () => {
 };
 
 export const CurrencyProvider = ({ children }) => {
-  const [currency, setCurrency] = useState('EUR');
+  // تثبيت العملة على SAR دائماً
+  const [currency] = useState('SAR');
   const [conversionRate, setConversionRate] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Load currency from localStorage on mount
-  useEffect(() => {
-    const savedCurrency = localStorage.getItem('selectedCurrency');
-    if (savedCurrency && (savedCurrency === 'EUR' || savedCurrency === 'SAR')) {
-      
-      setCurrency(savedCurrency);
-    }
-  }, []);
 
   // Fetch conversion rate when component mounts
   useEffect(() => {
@@ -53,36 +45,14 @@ export const CurrencyProvider = ({ children }) => {
     fetchRate();
   }, []);
 
-  // Save currency to localStorage when it changes
-  useEffect(() => {
-    if (currency) {
-   
-      localStorage.setItem('selectedCurrency', currency);
-    }
-  }, [currency]);
-
-  const switchCurrency = (newCurrency) => {
-    if (newCurrency === 'EUR' || newCurrency === 'SAR') {
- 
-      setCurrency(newCurrency);
-    } else {
-      console.warn('⚠️ Invalid currency code:', newCurrency);
-    }
-  };
-
   const convertPrice = (eurPrice) => {
     if (!eurPrice || isNaN(eurPrice)) {
       console.warn('⚠️ Invalid price for conversion:', eurPrice);
       return 0;
     }
 
-    if (currency === 'EUR') {
-  
-      return eurPrice;
-    }
-    
+    // دائماً نحول إلى SAR
     const convertedPrice = eurPrice * conversionRate;
- 
     return convertedPrice;
   };
 
@@ -94,20 +64,19 @@ export const CurrencyProvider = ({ children }) => {
       return formattedPrice;
     }
     
-    const currencySymbol = currency === 'EUR' ? '€' : 'SAR';
-    return `${formattedPrice} ${currencySymbol}`;
+    // دائماً نعرض SAR
+    return `${formattedPrice} SAR`;
   };
 
   const getCurrencySymbol = () => {
-    return currency === 'EUR' ? '€' : 'SAR';
+    return 'SAR';
   };
 
   const value = {
-    currency,
+    currency, // دائماً 'SAR'
     conversionRate,
     loading,
     error,
-    switchCurrency,
     convertPrice,
     formatPrice,
     getCurrencySymbol,

@@ -915,13 +915,16 @@ export const Root_CATEGORIES = gql`
       name
       slug
       image
+      order
       parent {
         id
         name
+        order
       }
       subCategories {
         id
         name
+        order
       }
     }
   }

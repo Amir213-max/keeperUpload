@@ -302,6 +302,9 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
         {/* Products Section */}
         <div className="md:col-span-4 p-4 bg-white">
           {/* 🟢 عرض صورة rootCategory فوق المنتجات */}
+          <h1 className="text-4xl text-[#1f2323] p-2">
+            {selectedCategoryName || t("All Products")}
+          </h1>
           {currentRootCategory?.image && (
             <div className="w-full mb-4">
               <img 
@@ -312,9 +315,7 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
             </div>
           )}
 
-          <h1 className="text-4xl text-[#1f2323] p-2">
-            {selectedCategoryName || t("All Products")}
-          </h1>
+         
 
           {/* <BrandsSlider
             brands={brands}

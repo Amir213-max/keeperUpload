@@ -18,19 +18,29 @@ export default function BrandsSlider({ brands, onBrandClick, selectedBrand }) {
       <Splide
         options={{
           type: 'loop',
-          autoWidth:true,
-          
+          autoWidth: true,
           perMove: 1,
-          breakpoints: {
-            1280: { perPage: 8, arrows: true },
-            1024: { perPage: 5, arrows: true },
-            768: { perPage: 4, arrows: false },
-            640: { perPage: 4, arrows: false },
-          },
           gap: '.5rem',
           pagination: false,
           arrows: true,
           direction: lang === 'ar' ? 'rtl' : 'ltr',
+          drag: true,
+          swipe: true,
+          touch: true,
+          breakpoints: {
+            1280: { 
+              arrows: true,
+            },
+            1024: { 
+              arrows: true,
+            },
+            768: { 
+              arrows: false,
+            },
+            640: { 
+              arrows: false,
+            },
+          },
         }}
         aria-label="Brand names"
         className="w-full"
@@ -120,8 +130,39 @@ export default function BrandsSlider({ brands, onBrandClick, selectedBrand }) {
           }
         }
 
- 
- 
+        /* تحسين السحب على الموبايل */
+        .splide__track {
+          overflow: hidden !important;
+        }
+
+        .splide {
+          overflow: hidden !important;
+          width: 100% !important;
+        }
+
+        .splide__container {
+          overflow: hidden !important;
+          width: 100% !important;
+        }
+
+        .splide__list {
+          display: flex !important;
+          width: fit-content !important;
+        }
+
+        .splide__slide {
+          max-width: fit-content !important;
+          flex-shrink: 0 !important;
+          width: auto !important;
+          touch-action: pan-y !important;
+        }
+
+        /* تحسين الـ touch على الموبايل */
+        @media (max-width: 768px) {
+          .splide__slide {
+            touch-action: pan-x !important;
+          }
+        }
       `}</style>
     </div>
   );

@@ -3,14 +3,14 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FaShoppingCart, FaUser, FaComments } from 'react-icons/fa';
+import { FaShoppingCart, FaUser } from 'react-icons/fa';
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { Root_CATEGORIES, GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
 import { motion, AnimatePresence } from "framer-motion";
 import CartSidebar from "./CartSidebar";
 import Image from "next/image";
-import { useChat } from "../contexts/ChatContext";
+// import { useChat } from "../contexts/ChatContext";
 import { useTranslation } from "../contexts/TranslationContext";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -19,7 +19,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
   const [cartOpen, setCartOpen] = useState(false);
   const [openParentId, setOpenParentId] = useState(null);
   const router = useRouter();
-  const { openChat } = useChat();
+  // const { openChat } = useChat();
   const { t } = useTranslation();
   const { user, logout } = useAuth();
 
@@ -66,10 +66,17 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
       }, []);
     
     // 🔹 فلترة: عرض فقط الـ parent categories التي لديها subcategories فعلاً
-    return parents.filter(item => {
+    const filtered = parents.filter(item => {
       const parent = item.parent;
       const subCategories = categories.filter(sub => sub.parent?.id === parent.id);
       return subCategories.length > 0; // فقط التي لديها subcategories
+    });
+    
+    // 🔹 ترتيب حسب order (0 أولاً، ثم 1، وهكذا)
+    return filtered.sort((a, b) => {
+      const orderA = a.parent?.order ?? 9999;
+      const orderB = b.parent?.order ?? 9999;
+      return orderA - orderB;
     });
   }, [categories]);
 
@@ -89,35 +96,80 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
       return;
     }
 
-    // 🔹 التنقل إلى صفحة الـ parent category
-    // البحث عن الـ parent category من categories (الـ parent هو category موجود في categories)
+    // 🔹 دالة لتحويل اسم الـ category إلى route رئيسي
+    const getParentRoute = (name) => {
+      let nameStr = '';
+      
+      // معالجة الـ name (قد يكون JSON string أو string عادي)
+      try {
+        const parsed = JSON.parse(name || '{}');
+        nameStr = parsed.en || parsed.ar || name || '';
+      } catch {
+        nameStr = name || '';
+      }
+
+      // Normalize الاسم (إزالة المسافات الزائدة وتحويل لحروف صغيرة)
+      const normalized = nameStr.toLowerCase().trim();
+
+      // Mapping بين الأسماء والـ routes الرئيسية
+      if (normalized.includes('goalkeeper') && normalized.includes('gloves')) {
+        return '/GoalkeeperGloves';
+      }
+      if (normalized.includes('football') && normalized.includes('boots')) {
+        return '/FootballBoots';
+      }
+      if (normalized.includes('goalkeeper') && normalized.includes('apparel')) {
+        return '/Goalkeeperapparel';
+      }
+      if (normalized.includes('goalkeeper') && normalized.includes('equipment')) {
+        return '/Goalkeeperequipment';
+      }
+      if (normalized.includes('teamsport')) {
+        return '/Teamsport';
+      }
+      if (normalized.includes('sale')) {
+        return '/Sale';
+      }
+
+      return null;
+    };
+
+    // 🔹 البحث عن الـ parent category من categories
     const parentCategory = categories.find((cat) => {
       return String(cat.id) === String(parentId) || cat.id === parentId;
     });
 
-    if (parentCategory?.slug) {
-      // Navigate to products page with parent category slug
-      const slug = encodeURIComponent(parentCategory.slug);
-      router.push(`/products/${slug}`, { scroll: false });
-      console.log("✅ Navigating to parent category:", `/products/${slug}`, parentCategory.name);
+    // 🔹 الحصول على الـ route الرئيسي من اسم الـ parent
+    const route = getParentRoute(parentName || parentCategory?.name);
+
+    if (route) {
+      // Navigate to main category page
+      router.push(route, { scroll: false });
+      console.log("✅ Navigating to parent category page:", route, parentName);
       if (setIsOpen) setIsOpen(false); // إغلاق الـ drawer على الموبايل
     } else {
-      // Fallback: toggle للفتح/الإغلاق إذا لم يتم العثور على slug
-      console.warn("⚠️ Parent category not found or missing slug for ID:", parentId, "Name:", parentName);
-      // محاولة البحث في parentCategories للعثور على parent object
-      const parentFromParentCategories = parentCategories.find(item => 
-        String(item.parent?.id) === String(parentId) || item.parent?.id === parentId
-      );
-      
-      if (parentFromParentCategories?.parent?.name) {
-        // إذا كان لدينا parent object لكن بدون slug، نستخدم toggle فقط
-        console.log("ℹ️ Found parent but no slug, toggling instead");
-      }
-      
-      if (openParentId === parentId) {
-        setOpenParentId(null);
+      // Fallback: استخدام products/slug إذا لم نجد route رئيسي
+      if (parentCategory?.slug) {
+        const slug = encodeURIComponent(parentCategory.slug);
+        router.push(`/products/${slug}`, { scroll: false });
+        console.log("✅ Navigating to products page:", `/products/${slug}`);
+        if (setIsOpen) setIsOpen(false);
       } else {
-        setOpenParentId(parentId);
+        // Fallback: toggle للفتح/الإغلاق إذا لم يتم العثور على route أو slug
+        console.warn("⚠️ Parent category not found or missing route for ID:", parentId, "Name:", parentName);
+        const parentFromParentCategories = parentCategories.find(item => 
+          String(item.parent?.id) === String(parentId) || item.parent?.id === parentId
+        );
+        
+        if (parentFromParentCategories?.parent?.name) {
+          console.log("ℹ️ Found parent but no route, toggling instead");
+        }
+        
+        if (openParentId === parentId) {
+          setOpenParentId(null);
+        } else {
+          setOpenParentId(parentId);
+        }
       }
     }
   };
@@ -228,9 +280,9 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
                     />
                   </Link>
 
-                  <button onClick={openChat} className="text-white hover:text-amber-400 transition-colors duration-200">
+                  {/* <button onClick={openChat} className="text-white hover:text-amber-400 transition-colors duration-200">
                     <FaComments size={20} />
-                  </button>
+                  </button> */}
 
                   <button onClick={() => setCartOpen(true)} className="text-white hover:text-amber-400 transition-colors duration-200">
                     <FaShoppingCart size={20} />
@@ -307,16 +359,22 @@ function SidebarContent({ parentCategories, categories, openParentId, handlePare
 
               {isOpen && hasSubCategories && (
                 <ul className={`mt-1 mb-2 space-y-0.5 ${isRTL ? "mr-4 ml-0 border-r-2 border-neutral-700" : "ml-4 mr-0 border-l-2 border-neutral-700"} pl-2`}>
-                {subCategories.map(sub => (
-                  <li
-                    key={sub.id}
-                      className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
-                      onClick={() => onSelectCategory && onSelectCategory(sub.id)}
-                      dir={isRTL ? "rtl" : "ltr"}
-                  >
-                    {t(sub.name)}
-                  </li>
-                ))}
+                {subCategories
+                  .sort((a, b) => {
+                    const orderA = a.order ?? 9999;
+                    const orderB = b.order ?? 9999;
+                    return orderA - orderB;
+                  })
+                  .map(sub => (
+                    <li
+                      key={sub.id}
+                        className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                        onClick={() => onSelectCategory && onSelectCategory(sub.id)}
+                        dir={isRTL ? "rtl" : "ltr"}
+                    >
+                      {t(sub.name)}
+                    </li>
+                  ))}
               </ul>
             )}
           </li>

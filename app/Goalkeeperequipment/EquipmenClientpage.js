@@ -272,6 +272,10 @@ useEffect(() => {
         {/* Products Section */}
         <div className="md:col-span-4 p-4 bg-white">
           {/* 🟢 عرض صورة rootCategory فوق المنتجات */}
+          <h1 className="text-4xl text-[#1f2323] p-2">
+            {selectedCategoryName || t("Goalkeeper Equipmen")}
+          </h1>
+          
           {rootCategory?.image && (
             <div className="w-full mb-4">
               <img 
@@ -282,9 +286,7 @@ useEffect(() => {
             </div>
           )}
 
-          <h1 className="text-4xl text-[#1f2323] p-2">
-            {selectedCategoryName || t("Goalkeeper Equipmen")}
-          </h1>
+          
 
           {!selectedCategoryId && (
             <BrandsSlider

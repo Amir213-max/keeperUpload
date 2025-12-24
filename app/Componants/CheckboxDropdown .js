@@ -1,81 +1,143 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDownIcon, ChevronUpIcon, CheckIcon } from '@heroicons/react/20/solid';
+import { ChevronDownIcon, CheckIcon } from '@heroicons/react/20/solid';
 import { useTranslation } from '../contexts/TranslationContext';
+import { Splide, SplideSlide } from '@splidejs/react-splide';
+import '@splidejs/react-splide/css';
 
 export default function FilterDropdown({ attributeValues, onFilterChange }) {
   const [selectedFilters, setSelectedFilters] = useState({});
-  const [showMore, setShowMore] = useState(false);
-  const { t } = useTranslation();
+  const [openDropdown, setOpenDropdown] = useState(null);
+  const { t, lang } = useTranslation();
+  const isRTL = lang === 'ar';
 
   // الفلترة تحدث فوراً عند اختيار القيم
   useEffect(() => {
     onFilterChange(selectedFilters);
   }, [selectedFilters, onFilterChange]);
 
-  const toggleOption = (attribute, value) => {
-    setSelectedFilters((prev) => {
-      const current = prev[attribute] || [];
-      const updated = current.includes(value)
-        ? current.filter((v) => v !== value)
-        : [...current, value];
-      return { ...prev, [attribute]: updated };
-    });
-  };
-
-  const visibleFilters = attributeValues.slice(0, 4);
-  const hiddenFilters = attributeValues.slice(4);
-
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {[...visibleFilters, ...(showMore ? hiddenFilters : [])].map(
-          ({ attribute, values }) => (
-            <Dropdown
+    <div className="space-y-4 overflow-x-hidden w-full">
+      {/* Desktop View - Flex Wrap */}
+      <div className="hidden md:flex flex-wrap gap-2">
+        {attributeValues.map(({ attribute, values }) => (
+          <Dropdown
+            key={attribute}
+            attribute={attribute}
+            values={values}
+            selected={selectedFilters[attribute] || []}
+            onChange={(newSelected) => {
+              setSelectedFilters((prev) => ({
+                ...prev,
+                [attribute]: newSelected,
+              }));
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Mobile View - Slider */}
+      <div className="md:hidden relative my-6 px-0">
+        <Splide
+          options={{
+            type: 'loop',
+            autoWidth: true,
+            perMove: 1,
+            gap: '.5rem',
+            pagination: false,
+            arrows: false,
+            direction: isRTL ? 'rtl' : 'ltr',
+          }}
+          aria-label="Filter attributes"
+          className="w-full"
+        >
+          {attributeValues.map(({ attribute, values }) => (
+            <SplideSlide
               key={attribute}
-              attribute={attribute}
-              values={values}
-              selected={selectedFilters[attribute] || []}
+              className="p-0 m-0 flex justify-center items-center"
+            >
+              <button
+                onClick={() => {
+                  setOpenDropdown(openDropdown === attribute ? null : attribute);
+                }}
+                className={`inline-flex items-center justify-center gap-1.5
+                  text-sm font-semibold
+                  px-5 py-2.5 cursor-pointer
+                  transition-all duration-300 ease-in-out
+                  whitespace-nowrap w-fit
+                  rounded-lg
+                  ${
+                    openDropdown === attribute
+                      ? 'bg-gradient-to-r text-white from-gray-400 to-gray-500 shadow-lg transform scale-105'
+                      : 'bg-white text-gray-700 shadow-md hover:shadow-lg hover:bg-gray-50'
+                  }`}
+              >
+                <span>{attribute} {selectedFilters[attribute]?.length > 0 && `(${selectedFilters[attribute].length})`}</span>
+                <ChevronDownIcon 
+                  className={`w-4 h-4 transition-transform duration-200 ${
+                    openDropdown === attribute ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+            </SplideSlide>
+          ))}
+        </Splide>
+
+        {/* Dropdown Content for Mobile */}
+        {openDropdown && (
+          <div className="mt-4 bg-white border border-gray-200 shadow-lg rounded-lg p-4 z-50">
+            <Dropdown
+              attribute={openDropdown}
+              values={attributeValues.find(a => a.attribute === openDropdown)?.values || []}
+              selected={selectedFilters[openDropdown] || []}
               onChange={(newSelected) => {
                 setSelectedFilters((prev) => ({
                   ...prev,
-                  [attribute]: newSelected,
+                  [openDropdown]: newSelected,
                 }));
               }}
+              isMobile={true}
+              onClose={() => setOpenDropdown(null)}
             />
-          )
+          </div>
         )}
-      </div>
 
-      {hiddenFilters.length > 0 && (
-        <div>
-          <button
-            onClick={() => setShowMore(!showMore)}
-            className="flex items-center px-4 py-2 text-sm font-medium text-black bg-gray-100 hover:bg-gray-200 duration-150 cursor-pointer transition"
-          >
-            {showMore ? (
-              <>
-                <ChevronUpIcon className="w-4 h-4 mr-1" />
-                {t('More Filters')}
-              </>
-            ) : (
-              <>
-                <ChevronDownIcon className="w-4 h-4 mr-1" />
-                {t('More Filters')}
-              </>
-            )}
-          </button>
-        </div>
-      )}
+        {/* تخصيص تصميم السلايدر */}
+        <style jsx>{`
+          .splide__track {
+            overflow: hidden !important;
+          }
+
+          .splide {
+            overflow: hidden !important;
+            width: 100% !important;
+          }
+
+          .splide__container {
+            overflow: hidden !important;
+            width: 100% !important;
+          }
+
+          .splide__list {
+            display: flex !important;
+            width: fit-content !important;
+          }
+
+          .splide__slide {
+            max-width: fit-content !important;
+            flex-shrink: 0 !important;
+            width: auto !important;
+          }
+        `}</style>
+      </div>
     </div>
   );
 }
 
-function Dropdown({ attribute, values, selected, onChange }) {
+function Dropdown({ attribute, values, selected, onChange, isMobile = false, onClose }) {
   const { t } = useTranslation();
-  const [isOpen, setIsOpen] = useState(false);
-  const [tempSelected, setTempSelected] = useState(selected); // للتأكيد
+  const [tempSelected, setTempSelected] = useState(selected);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -85,51 +147,55 @@ function Dropdown({ attribute, values, selected, onChange }) {
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
-        setTempSelected(selected); // الرجوع للقيم السابقة عند إغلاق الدروبداون
+        if (isMobile && onClose) {
+          onClose();
+        }
+        setTempSelected(selected);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [selected]);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [selected, isMobile, onClose]);
 
   const toggleOption = (value) => {
     const updated = tempSelected.includes(value)
       ? tempSelected.filter((v) => v !== value)
       : [...tempSelected, value];
-    setTempSelected(updated); // تحديث مؤقت
-    onChange(updated); // تحديث فوراً للفلترة
+    setTempSelected(updated);
+    onChange(updated);
   };
 
   const confirmSelection = () => {
     setTempSelected(tempSelected);
-    setIsOpen(false); // اغلاق الدروبداون
+    if (isMobile && onClose) {
+      onClose();
+    }
   };
 
-  return (
-    <div className="relative w-full sm:w-64 md:w-48" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex justify-between items-center cursor-pointer px-3 py-2 text-sm text-neutral-700 font-medium bg-white border border-gray-300 shadow hover:bg-gray-50 focus:outline-none"
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-      >
-        <span>{attribute} {selected.length > 0 && `(${selected.length})`}</span>
-        <ChevronDownIcon
-          className={`w-5 h-5 transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      <div
-        className={`absolute mt-2 w-full bg-white border border-gray-200 shadow-lg z-50 max-h-64 overflow-y-auto transition-opacity duration-300 ease-in-out
-          ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
-        style={{ transformOrigin: 'top center' }}
-      >
-        <div className="p-3 space-y-2 text-gray-800 text-sm">
+  // على الموبايل، نعرض القائمة مباشرة بدون dropdown
+  if (isMobile) {
+    return (
+      <div ref={dropdownRef} className="w-full">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-gray-800">{attribute}</h3>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="space-y-2 text-gray-800 text-sm max-h-64 overflow-y-auto">
           {values.map((value) => (
             <label
               key={value}
-              className="flex items-center justify-between cursor-pointer hover:bg-gray-100 px-2 py-1"
+              className="flex items-center justify-between cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
             >
               <div className="flex items-center space-x-2">
                 <input
@@ -143,18 +209,71 @@ function Dropdown({ attribute, values, selected, onChange }) {
               {tempSelected.includes(value) && <CheckIcon className="w-4 h-4 text-blue-600" />}
             </label>
           ))}
-
-          {/* زر التأكيد */}
-          <div className="flex justify-end mt-4">
-            <button
-              onClick={confirmSelection}
-              className="px-3 py-1 text-sm bg-black text-white hover:bg-gray-900 transition"
-            >
-              {t("Done ✔")}
-            </button>
-          </div>
+        </div>
+        <div className="flex justify-end mt-4">
+          <button
+            onClick={confirmSelection}
+            className="px-3 py-1 text-sm bg-black text-white hover:bg-gray-900 transition rounded"
+          >
+            {t("Done ✔")}
+          </button>
         </div>
       </div>
+    );
+  }
+
+  // على Desktop، نعرض dropdown عادي
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative w-full sm:w-64 md:w-48" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex justify-between items-center cursor-pointer px-3 py-2 text-sm text-neutral-700 font-medium bg-white border border-gray-300 shadow hover:bg-gray-50 focus:outline-none rounded"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span>{attribute} {selected.length > 0 && `(${selected.length})`}</span>
+        <ChevronDownIcon
+          className={`w-5 h-5 transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute mt-2 w-full bg-white border border-gray-200 shadow-lg z-50 max-h-64 overflow-y-auto rounded">
+          <div className="p-3 space-y-2 text-gray-800 text-sm">
+            {values.map((value) => (
+              <label
+                key={value}
+                className="flex items-center justify-between cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+              >
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={tempSelected.includes(value)}
+                    onChange={() => toggleOption(value)}
+                    className="accent-blue-600"
+                  />
+                  <span>{value}</span>
+                </div>
+                {tempSelected.includes(value) && <CheckIcon className="w-4 h-4 text-blue-600" />}
+              </label>
+            ))}
+
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => {
+                  confirmSelection();
+                  setIsOpen(false);
+                }}
+                className="px-3 py-1 text-sm bg-black text-white hover:bg-gray-900 transition rounded"
+              >
+                {t("Done ✔")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

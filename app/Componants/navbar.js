@@ -12,7 +12,6 @@ import { useAuth } from '../contexts/AuthContext'; // ✅ استدعاء الـ 
 import { GET_ACTIVE_HOME_PAGE_BLOCKS } from '../lib/queries';
 import { graphqlClient } from '../lib/graphqlClient';
 import { useCategory } from '../contexts/CategoryContext';
-import CurrencySwitcher from '../components/CurrencySwitcher';
 import { useCart } from '../contexts/CartContext';
 
 export default function NavbarWithLinks() {
@@ -72,7 +71,7 @@ useEffect(() => {
       <header className="w-full bg-black shadow py-4">
         <div className="navbar-container container mx-auto px-2 flex items-center justify-between">
           {/* ✅ Left side (Menu + Cart) */}
-          <div className="navbar-left flex items-center gap-4 md:gap-4 lg:gap-5 xl:gap-6 order-3 sm:order-1">
+          <div className="navbar-left flex items-center gap-4 md:gap-6 lg:gap-5 xl:gap-6 order-3 sm:order-1">
             <button
               onClick={() => setSidebarOpen(true)}
               className="text-white hover:text-amber-400 transition-colors duration-200 cursor-pointer lg:hidden"
@@ -91,7 +90,6 @@ useEffect(() => {
                 </span>
               )}
             </button>
-             <CurrencySwitcher />
           </div>
 
           {/* ✅ Center (Logo) */}
@@ -112,7 +110,7 @@ useEffect(() => {
           </div>
 
           {/* ✅ Right side (Search + Notifications + Lang) */}
-          <div className="navbar-right order-2 flex items-center gap-4 md:gap-4 lg:gap-5 xl:gap-6">
+          <div className="navbar-right order-2 flex items-center gap-4 md:gap-6 lg:gap-5 xl:gap-6">
 
             {/* 🔍 Search */}
             <button
@@ -129,9 +127,6 @@ useEffect(() => {
             {searchOpen && (
               <SearchComponent onClose={() => setSearchOpen(false)} />
             )}
-
-            {/* 💰 Currency Switcher */}
-            
 
             {/* 🌐 Language Selector */}
             <select

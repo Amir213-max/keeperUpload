@@ -177,11 +177,11 @@ const handleAddToCart = async (productId) => {
       }
     });
 
-    // التحقق من وجود Attributes مطلوبة (Size أو Color)
+    // التحقق من وجود Attributes مطلوبة (Size فقط - تجاهل Color)
     const requiredAttributes = Object.keys(attributesMap).filter(
       (label) =>
-        label.toLowerCase().includes("size") ||
-        label.toLowerCase().includes("color")
+        label.toLowerCase().includes("size")
+        // إزالة color من التحقق
     );
 
     // إذا كان فيه Attributes مطلوبة، افتح الـ modal
@@ -280,11 +280,12 @@ const addProductToCartDirectly = async (productId) => {
         ) : (
           <>
             <div className="space-y-4">
-              {cart.lineItems.map((item) => {
+              {cart.lineItems.map((item, index) => {
                 const product = item.product || {};
                 const finalPrice = product.price_range_exact_amount || product.list_price_amount || 0;
+                const uniqueKey = item.id || `cart-item-${index}-${item.sku || item.product?.id || Date.now()}`;
                 return (
-                  <motion.div key={item.id} layout transition={{ duration: 0.25, ease: "easeInOut" }} className="flex items-center justify-between bg-white shadow-sm p-3 hover:shadow-md transition">
+                  <motion.div key={uniqueKey} layout transition={{ duration: 0.25, ease: "easeInOut" }} className="flex items-center justify-between bg-white shadow-sm p-3 hover:shadow-md transition">
                     <div className="flex items-center space-x-3">
                       <img src={product.images?.[0] || "/no-img.png"} alt={product.name || "Product"} className="w-16 h-16 object-fill-fitgg border" />
                       <div>
@@ -316,12 +317,13 @@ const addProductToCartDirectly = async (productId) => {
               <div className="mt-8">
                 <h3 className="text-lg font-bold mb-3 text-gray-800">{t("Recommended for you")}</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  {recommended.map((prod) => {
+                  {recommended.map((prod, index) => {
                     const discountPercent = prod.relative_list_price_difference ? Math.round(prod.relative_list_price_difference * 100) : 0;
                     const hasDiscount = prod.price_range_exact_amount < prod.list_price_amount;
+                    const uniqueKey = prod.id || `recommended-${index}-${prod.sku || Date.now()}`;
 
                     return (
-                      <motion.div key={prod.id} whileHover={{ scale: 1.03 }} className="bg-white shadow-sm hover:shadow-md transition flex flex-col justify-between">
+                      <motion.div key={uniqueKey} whileHover={{ scale: 1.03 }} className="bg-white shadow-sm hover:shadow-md transition flex flex-col justify-between">
                         <Link href={`/product/${prod.sku}`} className="block p-2">
                           <img src={prod.images?.[0] || "/no-img.png"} alt={prod.name} className="w-full h-24 object-contain mb-1" />
                           <p className="text-sm font-semibold text-gray-800 line-clamp-1">{prod.name}</p>

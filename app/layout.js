@@ -52,7 +52,7 @@ export default function RootLayout({ children  }) {
      <CartProvider>
      
 
-<ChatProvider>
+{/* <ChatProvider> */}
 
      <NavbarWithLinks />
 
@@ -64,10 +64,10 @@ export default function RootLayout({ children  }) {
         <RegisterSWClient />
         <Toaster position="top-right"    toastOptions={{ duration: 3000 }}  />
   </CartProvider>
-<ChatSidebar />
-<WhatsAppButton phoneNumber="201234567890" />
+{/* <ChatSidebar /> */}
+{/* <WhatsAppButton phoneNumber="201234567890" /> */}
 {/* <CurrencyTest /> */}
-</ChatProvider>
+{/* </ChatProvider> */}
         <Footer />
      </CartProvider>
 </CategoryProvider>

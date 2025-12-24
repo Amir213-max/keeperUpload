@@ -164,17 +164,13 @@ export default function HomePageBlocks() {
              {block.type === "banners" && block.content?.banners?.length > 0 && (
   <>
     {block.content.banners.length <= 2 ? (
-      <div className={`w-full ${
-        block.content.banners.length === 1 
-          ? " md:mx-0" 
-          : " md:mx-0"
-      }`}>
+      <div className="w-full  md:mx-0">
         <div
           className={`grid ${
             block.content.banners.length === 1
-              ? "grid-cols-1 gap-0"
-              : "grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 lg:gap-8"
-          }`}
+              ? "grid-cols-1"
+              : "grid-cols-1 md:grid-cols-2"
+          } gap-2 md:gap-4`}
         >
           {block.content.banners.map((banner, idx) => {
             const hasMobileImage = isMobile && banner.mobile_image;
@@ -183,7 +179,6 @@ export default function HomePageBlocks() {
                 : getImageUrl(banner.image);
 
             const isTwoBanners = block.content.banners.length === 2;
-            const isSingleBanner = block.content.banners.length === 1;
 
             return (
               <motion.a
@@ -194,12 +189,11 @@ export default function HomePageBlocks() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: idx * 0.1 }}
-                className={`relative overflow-hidden bg-black
-                  ${hasMobileImage && isSingleBanner ? "w-[calc(100%+0.5rem)] md:w-full" : "w-full"}
+                className={`relative overflow-hidden bg-black w-full group
                   ${
                     isTwoBanners
-                      ? "aspect-[4/3] min-h-[300px] md:aspect-[21/9]"
-                      : "aspect-[4/3] min-h-[300px] md:aspect-[21/9] lg:aspect-[21/7]"
+                      ? "aspect-[800/741] md:aspect-[3/2]"
+                      : "aspect-[800/741] md:aspect-[2500/833]"
                   }
                 `}
               >
@@ -207,8 +201,10 @@ export default function HomePageBlocks() {
                   src={imageSrc}
                   alt={banner.title || ""}
                   fill
-                  sizes={hasMobileImage && isSingleBanner ? "100vw" : "(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"}
-                  // className={hasMobileImage ? "object-fill" : "object-contain"}
+                  sizes={isTwoBanners 
+                    ? "(max-width: 768px) 100vw, 50vw" 
+                    : "100vw"}
+                  className="object-center transition-transform duration-500 ease-out group-hover:scale-105"
                   unoptimized
                   priority={isFirstBannerBlock && idx === 0}
                 />
@@ -218,8 +214,8 @@ export default function HomePageBlocks() {
         </div>
       </div>
     ) : (
-      <div className="w-full overflow-x-auto no-scrollbar">
-        <div className="flex gap-4 md:gap-6 lg:gap-8 min-w-max pb-2">
+      <div className="w-full  md:mx-0 overflow-x-auto no-scrollbar">
+        <div className="flex gap-4 min-w-max pb-2">
           {block.content.banners.map((banner, idx) => {
             const imageSrc =
               isMobile && banner.mobile_image
@@ -235,17 +231,17 @@ export default function HomePageBlocks() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: idx * 0.1 }}
-                className="relative flex-shrink-0 overflow-hidden bg-black
-                  w-[90vw] sm:w-[70vw] md:w-[50vw] lg:w-[40vw] xl:w-[32vw]
-                  aspect-[16/9]
-                "
+                className="relative flex-shrink-0 overflow-hidden bg-black group aspect-[16/9]"
+                style={{
+                  width: "clamp(300px, 90vw, 450px)"
+                }}
               >
                 <Image
                   src={imageSrc}
                   alt={banner.title || ""}
                   fill
-                  sizes="(max-width: 640px) 90vw, (max-width: 768px) 70vw, (max-width: 1024px) 50vw, (max-width: 1280px) 40vw, 32vw"
-                  className="object-fill"
+                  sizes="(max-width: 768px) 90vw, 450px"
+                  className="object-cover object-center transition-transform duration-500 ease-out group-hover:scale-105"
                   unoptimized
                   priority={isFirstBannerBlock && idx === 0}
                 />

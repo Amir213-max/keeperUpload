@@ -10,6 +10,9 @@ import { ADD_ITEM_TO_CART } from "../lib/mutations";
 import { fetchUserCart } from "../lib/mutations";
 import toast from "react-hot-toast";
 import { gql } from "graphql-request";
+import { Splide, SplideSlide } from '@splidejs/react-splide';
+import '@splidejs/react-splide/css';
+import { useTranslation } from "../contexts/TranslationContext";
 
 const GET_PRODUCT_BY_ID = gql`
   query GetProductById($id: String!) {
@@ -48,6 +51,8 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
   const [selectedAttributes, setSelectedAttributes] = useState({});
   const [quantity, setQuantity] = useState(1);
   const { loading: currencyLoading } = useCurrency();
+  const { language } = useTranslation();
+  const isRTL = language === "ar";
 
   // جلب بيانات المنتج
   useEffect(() => {
@@ -95,10 +100,11 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
 
   // إضافة للباسكت
   const handleAddToCart = async () => {
+    // ✅ التحقق من size فقط (تجاهل color)
     const requiredAttributes = Object.keys(attributesMap).filter(
       (label) =>
-        label.toLowerCase().includes("size") ||
-        label.toLowerCase().includes("color")
+        label.toLowerCase().includes("size")
+        // إزالة color من التحقق
     );
 
     const missing = requiredAttributes.filter(
@@ -109,6 +115,14 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
       toast.error(`Please select: ${missing.join(", ")}`);
       return;
     }
+
+    // ✅ إزالة color من selectedAttributes قبل الإرسال
+    const cleanedAttributes = Object.keys(selectedAttributes).reduce((acc, key) => {
+      if (!key.toLowerCase().includes('color')) {
+        acc[key] = selectedAttributes[key];
+      }
+      return acc;
+    }, {});
 
     setAdding(true);
     try {
@@ -154,7 +168,7 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
               images: product.images,
               productBadges: product.productBadges || [],
             },
-            attributes: selectedAttributes,
+            attributes: cleanedAttributes, // استخدام cleanedAttributes بدون color
           });
         }
 
@@ -193,7 +207,7 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
-              className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto z-50"
+              className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto z-50 overflow-x-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               {loading ? (
@@ -215,7 +229,7 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                   </div>
 
                   {/* Content */}
-                  <div className="p-6">
+                  <div className="p-6 overflow-x-hidden">
                     <div className=" gap-6">
                       {/* Product Image */}
                       <div className="flex items-center justify-center bg-gray-50 rounded-lg p-4">
@@ -284,51 +298,22 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                             {Object.entries(attributesMap)
                               .filter(
                                 ([label]) =>
-                                  label.toLowerCase().includes("size") ||
-                                  label.toLowerCase().includes("color")
+                                  // عرض size فقط، تجاهل color تماماً
+                                  label.toLowerCase().includes("size")
+                                  // إزالة color من العرض
                               )
                               .sort(([a], [b]) =>
                                 a.toLowerCase().includes("size") ? -1 : 1
                               )
                               .map(([label, values]) => {
-                                const isColor = label.toLowerCase().includes("color");
-
                                 return (
                                   <div key={label} className="space-y-2">
                                     <h4 className="text-sm font-medium text-gray-900 uppercase">
                                       {label}
                                     </h4>
 
-                                    {isColor ? (
-                                      <div className="flex flex-wrap gap-2">
-                                        {values.map((val) => {
-                                          const selected = selectedAttributes[label] === val;
-                                          return (
-                                            <button
-                                              key={val}
-                                              onClick={() =>
-                                                setSelectedAttributes((prev) => ({
-                                                  ...prev,
-                                                  [label]: val,
-                                                }))
-                                              }
-                                              className={`px-4 py-2 border-2 rounded-lg text-sm font-medium transition-all ${
-                                                selected
-                                                  ? "border-gray-900 bg-gray-900 text-white"
-                                                  : "border-gray-200 text-gray-700 hover:border-gray-400"
-                                              }`}
-                                            >
-                                              <span
-                                                className="w-4 h-4 rounded-full border border-gray-300 inline-block mr-2"
-                                                style={{ backgroundColor: val.toLowerCase() }}
-                                              />
-                                              {val}
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    ) : (
-                                      <div className="flex flex-wrap gap-2">
+                                    {/* Desktop View - Flex Wrap (الشاشات الكبيرة) */}
+                                    <div className="hidden md:flex flex-wrap gap-2">
                                         {values.map((val) => {
                                           const selected = selectedAttributes[label] === val;
                                           return (
@@ -351,7 +336,93 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                                           );
                                         })}
                                       </div>
-                                    )}
+
+                                    {/* Mobile View - Slider (الشاشات الصغيرة) */}
+                                    <div className="md:hidden relative my-4 px-0">
+                                      <Splide
+                                        options={{
+                                          type: 'loop',
+                                          autoWidth: true,
+                                          perMove: 1,
+                                          gap: '.5rem',
+                                          pagination: false,
+                                          arrows: true,
+                                          direction: isRTL ? 'rtl' : 'ltr',
+                                        }}
+                                        aria-label={`${label} options`}
+                                        className="w-full"
+                                      >
+                                        {values.map((val) => {
+                                          const selected = selectedAttributes[label] === val;
+                                          return (
+                                            <SplideSlide
+                                              key={val}
+                                              className="p-0 m-0 flex justify-center items-center"
+                                            >
+                                              <button
+                                                onClick={() =>
+                                                  setSelectedAttributes((prev) => ({
+                                                    ...prev,
+                                                    [label]: val,
+                                                  }))
+                                                }
+                                                className={`inline-flex items-center justify-center 
+                                                  text-sm font-semibold
+                                                  px-5 py-2.5 cursor-pointer
+                                                  transition-all duration-300 ease-in-out
+                                                  whitespace-nowrap w-fit
+                                                  rounded-lg
+                                                  ${
+                                                    selected
+                                                      ? 'bg-gradient-to-r text-white from-gray-400 to-gray-500 text-gray-900 shadow-lg transform scale-105'
+                                                      : 'bg-white text-gray-700 shadow-md hover:shadow-lg hover:bg-gray-50'
+                                                  }`}
+                                              >
+                                                {val}
+                                              </button>
+                                            </SplideSlide>
+                                          );
+                                        })}
+                                      </Splide>
+
+                                      {/* تخصيص تصميم الأسهم بشكل احترافي */}
+                                      <style jsx>{`
+                                        .splide__arrow {
+                                          background-color: #f3f4f6 !important;
+                                          color: #6b7280 !important;
+                                          width: 28px !important;
+                                          height: 28px !important;
+                                          border-radius: 50% !important;
+                                          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+                                          transition: all 0.3s ease !important;
+                                        }
+
+                                        .splide__arrow:hover {
+                                          background-color: #e5e7eb !important;
+                                          color: #374151 !important;
+                                          box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15) !important;
+                                        }
+
+                                        .splide__arrow svg {
+                                          fill: currentColor !important;
+                                          width: 14px !important;
+                                          height: 14px !important;
+                                        }
+
+                                        .splide__arrow--prev {
+                                          left: -15px !important;
+                                        }
+
+                                        .splide__arrow--next {
+                                          right: -15px !important;
+                                        }
+
+                                        .splide__arrow:disabled {
+                                          opacity: 0.3 !important;
+                                          cursor: not-allowed !important;
+                                        }
+                                      `}</style>
+                                    </div>
                                   </div>
                                 );
                               })}

@@ -38,12 +38,12 @@ export default function ProductDetailsSidebar({ product }) {
   });
 
   // 🛒 إضافة المنتج للسلة
-// 🛒 إضافة المنتج للسلة
 const addToCart = async () => {
+  // ✅ التحقق من size فقط (تجاهل color)
   const requiredAttributes = Object.keys(attributesMap).filter(
     (label) =>
-      label.toLowerCase().includes("size") ||
-      label.toLowerCase().includes("color")
+      label.toLowerCase().includes("size")
+      // إزالة color من التحقق
   );
 
   const missing = requiredAttributes.filter(
@@ -54,6 +54,14 @@ const addToCart = async () => {
     toast.error(`Please select: ${missing.join(", ")}`);
     return;
   }
+
+  // ✅ إزالة color من selectedAttributes قبل الإرسال
+  const cleanedAttributes = Object.keys(selectedAttributes).reduce((acc, key) => {
+    if (!key.toLowerCase().includes('color')) {
+      acc[key] = selectedAttributes[key];
+    }
+    return acc;
+  }, {});
 
   setAdding(true);
   try {
@@ -89,7 +97,7 @@ const addToCart = async () => {
       images: product.images || [{ url: product.cover_image?.url || "" }],
       productBadges: product.productBadges || [],
     },
-    attributes: selectedAttributes,
+    attributes: cleanedAttributes, // استخدام cleanedAttributes بدون color
   });
 }
 
@@ -215,12 +223,12 @@ useEffect(() => {
     {Object.entries(attributesMap)
       .filter(
         ([label]) =>
-          label.toLowerCase().includes('size') ||
-          label.toLowerCase().includes('color')
+          // عرض size فقط، تجاهل color تماماً
+          label.toLowerCase().includes('size')
+          // إزالة color من العرض
       )
       .sort(([a], [b]) => (a.toLowerCase().includes('size') ? -1 : 1))
       .map(([label, values]) => {
-        const isColor = label.toLowerCase().includes('color');
         const [open, setOpen] = useState(false);
 
         return (
@@ -229,101 +237,30 @@ useEffect(() => {
               {label}
             </h3>
 
-            {isColor ? (
-              // 🎨 Dropdown احترافية للألوان
-              <div className="relative w-56">
-                <button
-                  onClick={() => setOpen(!open)}
-                  className="w-full flex items-center justify-between border-2 border-gray-300 rounded-lg px-4 py-2 text-gray-700 text-sm font-medium hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 transition-all"
-                >
-                  <span className="flex items-center gap-2">
-                    {selectedAttributes[label] ? (
-                      <>
-                        <span
-                          className="w-4 h-4 rounded-full border border-gray-300"
-                          style={{
-                            backgroundColor: selectedAttributes[label].toLowerCase(),
-                          }}
-                        />
-                        {selectedAttributes[label]}
-                      </>
-                    ) : (
-                      'Select color'
-                    )}
-                  </span>
-                  <svg
-                    className={`w-4 h-4 transition-transform ${
-                      open ? 'rotate-180' : 'rotate-0'
+            {/* عرض الأزرار العادية للـ Sizes فقط */}
+            <div className="flex flex-wrap gap-2">
+              {values.map((val) => {
+                const selected = selectedAttributes[label] === val;
+                return (
+                  <button
+                    key={val}
+                    onClick={() =>
+                      setSelectedAttributes((prev) => ({
+                        ...prev,
+                        [label]: val,
+                      }))
+                    }
+                    className={`px-3 sm:px-4 py-1.5 sm:py-2 border-2 text-sm font-medium transition-all duration-200 ${
+                      selected
+                        ? 'border-gray-900 bg-gray-900 text-white'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
                     }`}
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                <AnimatePresence>
-                  {open && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.2 }}
-                      className="absolute z-10 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg"
-                    >
-                      {values.map((val) => (
-                        <button
-                          key={val}
-                          onClick={() => {
-                            setSelectedAttributes((prev) => ({
-                              ...prev,
-                              [label]: val,
-                            }));
-                            setOpen(false);
-                          }}
-                          className={`flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-all ${
-                            selectedAttributes[label] === val ? 'bg-gray-50 font-medium' : ''
-                          }`}
-                        >
-                          <span
-                            className="w-4 h-4 rounded-full border border-gray-300 mr-2"
-                            style={{ backgroundColor: val.toLowerCase() }}
-                          />
-                          {val.charAt(0).toUpperCase() + val.slice(1)}
-                        </button>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            ) : (
-              // ✅ الأزرار العادية للـ Sizes
-              <div className="flex flex-wrap gap-2">
-                {values.map((val) => {
-                  const selected = selectedAttributes[label] === val;
-                  return (
-                    <button
-                      key={val}
-                      onClick={() =>
-                        setSelectedAttributes((prev) => ({
-                          ...prev,
-                          [label]: val,
-                        }))
-                      }
-                      className={`px-3 sm:px-4 py-1.5 sm:py-2 border-2 text-sm font-medium transition-all duration-200 ${
-                        selected
-                          ? 'border-gray-900 bg-gray-900 text-white'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-400 hover:bg-gray-50'
-                      }`}
-                    >
-                      {val}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                    {val}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         );
       })}
