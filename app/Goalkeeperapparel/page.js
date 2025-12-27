@@ -38,11 +38,6 @@ const fetchProductsByCategory = async () => {
 
   // 🟢 ترتيب المنتجات من الأحدث إلى الأقدم (حسب created_at)
   products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  
-  // ✅ Client-side limiting: Slice to 24 products for product grids
-  // This prevents fetching too much data and improves performance
-  const DEFAULT_PRODUCT_LIMIT = 24;
-  products = products.slice(0, DEFAULT_PRODUCT_LIMIT);
 
   return { products, rootCategory: data.rootCategory };
 };

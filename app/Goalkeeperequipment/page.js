@@ -34,12 +34,8 @@ const fetchProductsByCategory = async () => {
   // ✅ إزالة المنتجات المكررة بناءً على product.id
   products = removeDuplicateProducts(products);
 
-  // 🟢 عرض المنتجات من الأحدث إلى الأقدم
-  products = products.reverse();
-  
-  // ✅ Client-side limiting: Slice to 24 products for product grids
-  const DEFAULT_PRODUCT_LIMIT = 24;
-  products = products.slice(0, DEFAULT_PRODUCT_LIMIT);
+  // 🟢 ترتيب المنتجات من الأحدث إلى الأقدم (حسب created_at)
+  products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   return { products, rootCategory: data.rootCategory };
 };

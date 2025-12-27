@@ -1,21 +1,20 @@
 import { Suspense } from "react";
 import { graphqlClient } from "../../../lib/graphqlClient";
-import { PRODUCTS_BY_CATEGORY_QUERY, GET_CATEGORIES_ONLY_QUERY } from "../../../lib/queries";
+import { PRODUCTS_BY_CATEGORY_FILTERED_QUERY, GET_CATEGORIES_ONLY_QUERY } from "../../../lib/queries";
 import { removeDuplicateProducts } from "../../../lib/removeDuplicateProducts";
 import Loader from "../../../Componants/Loader";
 import ProductsClientPage from "../../ProductsClientPage";
 
 /**
- * IMPORTANT: 
- * - The GraphQL schema does NOT support `limit` on `rootCategory.products`
- * - Must fetch products by categoryId to prevent 503 errors
- * - Client-side slicing (24 items) is applied after fetching
+ * ✅ جلب المنتجات مع pagination باستخدام limit و offset
+ * - يستخدم PRODUCTS_BY_CATEGORY_FILTERED_QUERY الذي يدعم limit/offset
+ * - يقلل استهلاك السيرفر بجلب 30 منتج فقط في كل صفحة
  */
-const fetchProductsByCategory = async (categorySlug) => {
+const fetchProductsByCategory = async (categorySlug, page = 1, limit = 30) => {
   // ⚠️ Cannot fetch all products - must have a category
   if (!categorySlug) {
     console.warn("⚠️ Cannot fetch products without categoryId - this causes 503 errors");
-    return { products: [], rootCategory: null };
+    return { products: [], rootCategory: null, totalCount: 0 };
   }
 
   // 🔹 البحث عن category بالـ slug أولاً
@@ -25,42 +24,47 @@ const fetchProductsByCategory = async (categorySlug) => {
   );
 
   if (!foundCategory) {
-    return { products: [], rootCategory: null };
+    return { products: [], rootCategory: null, totalCount: 0 };
   }
 
-  // جلب المنتجات باستخدام categoryId (no limit on rootCategory.products - not supported)
+  // حساب offset من page number
+  const offset = (page - 1) * limit;
+
+  // جلب المنتجات باستخدام limit و offset
   const variables = { 
-    categoryId: foundCategory.id
+    categoryId: foundCategory.id,
+    limit: limit,
+    offset: offset
   };
-  const data = await graphqlClient.request(PRODUCTS_BY_CATEGORY_QUERY, variables);
+  const data = await graphqlClient.request(PRODUCTS_BY_CATEGORY_FILTERED_QUERY, variables);
 
-  let products = data.rootCategory?.products || [];
-
-  if (data.rootCategory?.subCategories) {
-    data.rootCategory.subCategories.forEach((sub) => {
-      if (sub.products) {
-        products = [...products, ...sub.products];
-      }
-    });
-  }
+  let products = data.productsByCategory || [];
 
   // ✅ إزالة المنتجات المكررة بناءً على product.id
   products = removeDuplicateProducts(products);
 
   products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  
-  // ✅ Client-side limiting: Slice to 24 products for product grids
-  const DEFAULT_PRODUCT_LIMIT = 24;
-  products = products.slice(0, DEFAULT_PRODUCT_LIMIT);
 
-  return { products, rootCategory: data.rootCategory };
+  // حساب total count بناءً على hasMore
+  // إذا كان hasMore = true، فهناك صفحات إضافية
+  // إذا كان hasMore = false، فالصفحة الحالية هي الأخيرة
+  const hasMore = products.length === limit;
+  const totalCount = hasMore ? limit * (page + 1) : (limit * (page - 1)) + products.length;
+
+  return { 
+    products, 
+    rootCategory: data.rootCategory,
+    totalCount,
+    hasMore
+  };
 };
 
-export default async function ProductsFiltersPage({ params }) {
+export default async function ProductsFiltersPage({ params, searchParams }) {
   const categorySlug = params?.slug || null;
   const filters = params?.filters || [];
+  const page = parseInt(searchParams?.page || '1', 10);
   
-  const { products, rootCategory } = await fetchProductsByCategory(categorySlug);
+  const { products, rootCategory, totalCount, hasMore } = await fetchProductsByCategory(categorySlug, page, 30);
 
   const attributeMap = {};
   products.forEach((product) => {
@@ -93,6 +97,9 @@ export default async function ProductsFiltersPage({ params }) {
         categorySlug={categorySlug}
         rootCategory={rootCategory}
         initialFilters={filters}
+        currentPage={page}
+        totalCount={totalCount}
+        hasMore={hasMore}
       />
     </Suspense>
   );

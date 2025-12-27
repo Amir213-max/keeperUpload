@@ -13,12 +13,18 @@ import { GET_ACTIVE_HOME_PAGE_BLOCKS } from '../lib/queries';
 import { graphqlClient } from '../lib/graphqlClient';
 import { useCategory } from '../contexts/CategoryContext';
 import { useCart } from '../contexts/CartContext';
+import { clearTranslationCache } from '../lib/translationService';
 
 export default function NavbarWithLinks() {
   const { t, lang, setLang } = useTranslation();
   const [cartOpen, setCartOpen] = useState(false);
   const { getCartItemCount } = useCart();
   const cartItemCount = getCartItemCount();
+
+  // Clear translation cache when language changes
+  useEffect(() => {
+    clearTranslationCache();
+  }, [lang]);
 
     const [blocks, setBlocks] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -130,7 +136,10 @@ useEffect(() => {
 
             {/* 🌐 Language Selector */}
             <select
-              onChange={(e) => setLang(e.target.value)}
+              onChange={(e) => {
+                clearTranslationCache();
+                setLang(e.target.value);
+              }}
               value={lang}
               className="bg-black text-white border border-gray-500 px-2 py-1  text-sm"
             >

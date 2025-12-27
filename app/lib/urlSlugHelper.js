@@ -202,7 +202,7 @@ export function matchSlugToAttributeName(slug, attributeValues) {
  * @param {string} brand - Brand name (optional, will be added as query param)
  * @returns {string} - URL with path segments
  */
-export function buildPathSegmentUrl(categorySlug, attributes = {}, brand = null) {
+export function buildPathSegmentUrl(categorySlug, attributes = {}, brand = null, page = null) {
   // ⚠️ /products route has been removed - must have a categorySlug
   // If no categorySlug, return null or empty string to prevent navigation
   if (!categorySlug) {
@@ -248,9 +248,85 @@ export function buildPathSegmentUrl(categorySlug, attributes = {}, brand = null)
     path += "/" + pathSegments.join("/");
   }
   
-  // Add brand as query parameter if exists
+  // Build query parameters
+  const queryParams = [];
   if (brand) {
-    path += `?brand=${toSlug(brand)}`;
+    queryParams.push(`brand=${toSlug(brand)}`);
+  }
+  if (page && page > 1) {
+    queryParams.push(`page=${page}`);
+  }
+  
+  if (queryParams.length > 0) {
+    path += `?${queryParams.join("&")}`;
+  }
+  
+  return path;
+}
+
+/**
+ * Build URL with path segments for parent pages (like /GoalkeeperApparel)
+ * Format: /[parent-page]/[first-attr-value]/[attr-name]-[attr-value]/...
+ * Example: /GoalkeeperApparel/black/size-large?brand=nike
+ * @param {string} basePath - Base path (e.g., "/GoalkeeperApparel")
+ * @param {object} attributes - Attributes object { "Color": ["Black"], "Size": ["Large"] }
+ * @param {string} brand - Brand name (optional, will be added as query param)
+ * @returns {string} - URL with path segments
+ */
+export function buildParentPageUrl(basePath, attributes = {}, brand = null) {
+  if (!basePath) {
+    return null;
+  }
+  
+  let path = basePath;
+  
+  // Sort attributes: Color first (if exists), then others
+  const sortedAttrs = Object.entries(attributes).sort(([a], [b]) => {
+    const aLower = a.toLowerCase();
+    const bLower = b.toLowerCase();
+    if (aLower === "color") return -1;
+    if (bLower === "color") return 1;
+    return a.localeCompare(b);
+  });
+  
+  // Add first attribute value directly (usually color)
+  let firstAttrAdded = false;
+  const pathSegments = [];
+  
+  sortedAttrs.forEach(([attrName, values]) => {
+    if (!values || values.length === 0) return;
+    
+    const attrSlug = attributeNameToSlug(attrName);
+    const attrLower = attrName.toLowerCase();
+    
+    // First attribute (usually color) - add first value directly without name
+    if (!firstAttrAdded && attrLower === "color" && values.length > 0) {
+      pathSegments.push(toSlug(values[0]));
+      firstAttrAdded = true;
+      
+      // Add remaining color values as color-value
+      if (values.length > 1) {
+        for (let i = 1; i < values.length; i++) {
+          const valueSlug = toSlug(values[i]);
+          pathSegments.push(`${attrSlug}-${valueSlug}`);
+        }
+      }
+    } else {
+      // Other attributes - add as attr-name-attr-value
+      values.forEach((value) => {
+        const valueSlug = toSlug(value);
+        pathSegments.push(`${attrSlug}-${valueSlug}`);
+      });
+    }
+  });
+  
+  // Add brand as path segment (brand-brandname)
+  if (brand) {
+    pathSegments.push(`brand-${toSlug(brand)}`);
+  }
+  
+  if (pathSegments.length > 0) {
+    path += "/" + pathSegments.join("/");
   }
   
   return path;
@@ -300,6 +376,12 @@ export function parsePathSegments(pathSegments = [], attributeValues = []) {
   pathSegments.forEach((segment) => {
     const segmentLower = segment.toLowerCase();
     
+    // Check if it's a brand segment (brand-brandname)
+    if (segmentLower.startsWith("brand-")) {
+      // Skip brand segments - they will be handled separately
+      return;
+    }
+    
     // Try to match as "attr-name-attr-value" format first
     let matched = false;
     for (const [attrSlug, attrName] of Object.entries(attrSlugToNameMap)) {
@@ -343,5 +425,25 @@ export function parsePathSegments(pathSegments = [], attributeValues = []) {
   });
   
   return attributes;
+}
+
+/**
+ * Parse brand from path segments
+ * Format: brand-brandname
+ * @param {string[]} pathSegments - Array of path segments
+ * @returns {string|null} - Brand name or null
+ */
+export function parseBrandFromPathSegments(pathSegments = []) {
+  if (!pathSegments || pathSegments.length === 0) return null;
+  
+  for (const segment of pathSegments) {
+    const segmentLower = segment.toLowerCase();
+    if (segmentLower.startsWith("brand-")) {
+      const brandSlug = segmentLower.substring(6); // Remove "brand-" prefix
+      return fromSlug(brandSlug);
+    }
+  }
+  
+  return null;
 }
 

@@ -8,6 +8,7 @@ import { useCurrency } from "../contexts/CurrencyContext";
 import PriceDisplay from "../components/PriceDisplay";
 import ProductSlider from "../Componants/ProductSlider";
 import Sidebar from "../Componants/sidebar";
+import DynamicText from "../components/DynamicText";
 import { useTranslation } from "../contexts/TranslationContext";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
@@ -19,7 +20,9 @@ import {
   toSlug,
   fromSlug,
   buildPathSegmentUrl,
+  buildParentPageUrl,
   parsePathSegments,
+  parseBrandFromPathSegments,
 } from "../lib/urlSlugHelper";
 import { useCategory } from "../contexts/CategoryContext";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
@@ -65,6 +68,7 @@ export default function ApparelClientPage({ products, brands, attributeValues, r
   
   // 🔹 Ref to track if we're updating URL internally (to avoid infinite loop)
   const isUpdatingUrlRef = useRef(false);
+  const isInitialLoadRef = useRef(true);
  const { loading: currencyLoading } = useCurrency();
 
   const { t, language } = useTranslation();
@@ -161,46 +165,128 @@ useEffect(() => {
   useEffect(() => {
     if (isUpdatingUrlRef.current || !pathname || !attributeValues || attributeValues.length === 0) return;
     
-    // Parse path segments from URL (e.g., /products/category-slug/black/size-large)
-    if (pathname.startsWith('/products/')) {
-      const pathWithoutBase = pathname.replace('/products/', '').split('?')[0];
-      const parts = pathWithoutBase.split('/').filter(p => p);
+    // Use a small delay to ensure URL is updated
+    const timeoutId = setTimeout(() => {
+      if (isUpdatingUrlRef.current) return;
       
-      // First part is category slug, rest are attribute filters
-      const pathSegments = parts.slice(1); // Skip category slug
+      const currentPathname = typeof window !== "undefined" ? window.location.pathname : pathname;
       
-      // Parse path segments to attributes
-      if (pathSegments.length > 0) {
-        const parsedAttrs = parsePathSegments(pathSegments, attributeValues);
-        if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
-          const currentAttrsStr = JSON.stringify(selectedAttributes);
-          const newAttrsStr = JSON.stringify(parsedAttrs);
-          if (currentAttrsStr !== newAttrsStr) {
-            setSelectedAttributes(parsedAttrs);
+      // Parse path segments from URL (e.g., /products/category-slug/black/size-large)
+      if (currentPathname.startsWith('/products/')) {
+        const pathWithoutBase = currentPathname.replace('/products/', '').split('?')[0];
+        const parts = pathWithoutBase.split('/').filter(p => p);
+        
+        // First part is category slug, rest are attribute filters and brand
+        const pathSegments = parts.slice(1); // Skip category slug
+        
+        // قراءة brand من path segments
+        const pathBrand = parseBrandFromPathSegments(pathSegments);
+        if (pathBrand && pathBrand !== selectedBrand) {
+          setSelectedBrand(pathBrand);
+        }
+        
+        // Parse path segments to attributes
+        if (pathSegments.length > 0) {
+          const parsedAttrs = parsePathSegments(pathSegments, attributeValues);
+          if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
+            const currentAttrsStr = JSON.stringify(selectedAttributes);
+            const newAttrsStr = JSON.stringify(parsedAttrs);
+            if (currentAttrsStr !== newAttrsStr) {
+              setSelectedAttributes(parsedAttrs);
+            }
+          }
+        } else if (pathSegments.length === 0 && Object.keys(selectedAttributes).length > 0) {
+          // If no path segments but we have attributes, clear them only if not updating URL
+          if (!isUpdatingUrlRef.current) {
+            setSelectedAttributes({});
           }
         }
-      } else if (Object.keys(selectedAttributes).length > 0) {
-        // If no path segments but we have attributes, clear them
-        setSelectedAttributes({});
-      }
-    } else {
-      // Also check query params for backward compatibility
-      const attrs = {};
-      for (const [key, value] of searchParams.entries()) {
-        if (key === "brand" || key === "category") continue;
-        const attrName = matchSlugToAttributeName(key, attributeValues);
-        if (attrName && value) {
-          const attrValues = slugToAttributeValues(value);
-          if (attrValues.length > 0) {
-            attrs[attrName] = attrValues;
+      } else {
+        // إذا لم نكن في /products/، اقرأ الفلاتر من path segments للصفحة الرئيسية
+        // مثال: /Goalkeeperapparel/black/size-large
+        const pathParts = currentPathname.split('/').filter(p => p);
+        
+        if (pathParts.length > 1 && attributeValues && attributeValues.length > 0) {
+          // أول جزء هو اسم الصفحة، باقي الأجزاء هي attributes و brand
+          const pathSegments = pathParts.slice(1);
+          
+          // قراءة brand من path segments
+          const pathBrand = parseBrandFromPathSegments(pathSegments);
+          if (pathBrand && pathBrand !== selectedBrand) {
+            setSelectedBrand(pathBrand);
+          }
+          
+          const parsedAttrs = parsePathSegments(pathSegments, attributeValues);
+          if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
+            const currentAttrsStr = JSON.stringify(selectedAttributes);
+            const newAttrsStr = JSON.stringify(parsedAttrs);
+            if (currentAttrsStr !== newAttrsStr) {
+              setSelectedAttributes(parsedAttrs);
+            }
+          }
+        } else if (pathParts.length === 1) {
+          // إذا لم يكن هناك path segments في pathname من Next.js، تحقق من window.location.pathname
+          const actualPath = typeof window !== "undefined" ? window.location.pathname : currentPathname;
+          const actualPathParts = actualPath.split('/').filter(p => p);
+          
+          if (actualPathParts.length > 1) {
+            // إذا كان window.location.pathname يحتوي على path segments، اقرأ الفلاتر
+            const pathSegments = actualPathParts.slice(1);
+            
+            // قراءة brand من path segments
+            const pathBrand = parseBrandFromPathSegments(pathSegments);
+            if (pathBrand && pathBrand !== selectedBrand) {
+              setSelectedBrand(pathBrand);
+            }
+            
+            if (attributeValues && attributeValues.length > 0 && pathSegments.length > 0) {
+              const parsedAttrs = parsePathSegments(pathSegments, attributeValues);
+              if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
+                const currentAttrsStr = JSON.stringify(selectedAttributes);
+                const newAttrsStr = JSON.stringify(parsedAttrs);
+                if (currentAttrsStr !== newAttrsStr) {
+                  setSelectedAttributes(parsedAttrs);
+                }
+              }
+            }
+          } else if (actualPathParts.length === 1 && Object.keys(selectedAttributes).length > 0) {
+            // فقط امسح الفلاتر إذا كان URL الحقيقي لا يحتوي على path segments
+            if (!isUpdatingUrlRef.current) {
+              setSelectedAttributes({});
+            }
           }
         }
       }
-      if (Object.keys(attrs).length > 0) {
-        setSelectedAttributes(attrs);
+    }, 400); // زيادة timeout إلى 400ms (أكثر من 300ms timeout تحديث URL)
+    
+    return () => clearTimeout(timeoutId);
+  }, [pathname, searchParams, attributeValues]);
+
+  // 🔹 قراءة path segments عند تحميل الصفحة (للصفحات الرئيسية)
+  // هذا useEffect منفصل ينتظر حتى يكون attributeValues جاهز
+  useEffect(() => {
+    if (isUpdatingUrlRef.current || !attributeValues || attributeValues.length === 0) return;
+    
+    // فقط للصفحات الرئيسية (ليست /products/)
+    if (!pathname.startsWith('/products/')) {
+      const pathParts = pathname.split('/').filter(p => p);
+      
+      if (pathParts.length > 1) {
+        const pathSegments = pathParts.slice(1); // Skip first part (page name)
+        
+        if (pathSegments.length > 0) {
+          const parsedAttrs = parsePathSegments(pathSegments, attributeValues);
+          if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
+            const currentAttrsStr = JSON.stringify(selectedAttributes);
+            const newAttrsStr = JSON.stringify(parsedAttrs);
+            if (currentAttrsStr !== newAttrsStr) {
+              setSelectedAttributes(parsedAttrs);
+            }
+          }
+        }
       }
     }
-  }, [pathname, searchParams, attributeValues, selectedAttributes]);
+  }, [pathname, attributeValues]);
 
   // 🔹 فلترة المنتجات حسب الفلاتر
   useEffect(() => {
@@ -252,39 +338,57 @@ useEffect(() => {
   }, [selectedCategoryId, categoriesWithProducts]);
 
   // 🔹 تحديث الـ URL عند تغيير الفلاتر (using path segments format)
-  // ⚠️ IMPORTANT: Only update URL if we have a category slug - /products route is removed
   useEffect(() => {
-    // Don't update URL if we're on a specific page (like /Goalkeeperapparel) and no category is selected
-    // This prevents unwanted redirects to removed /products route
-    if (!selectedCategorySlug && pathname !== '/products' && !pathname.startsWith('/products/')) {
-      return; // Stay on current page, don't redirect
+    if (isUpdatingUrlRef.current) return; // Skip if we're updating URL internally
+    
+    let newUrl;
+    
+    // إذا كان هناك selectedCategorySlug، استخدم /products/[slug]/[attributes]
+    if (selectedCategorySlug) {
+      newUrl = buildPathSegmentUrl(
+        selectedCategorySlug,
+        selectedAttributes,
+        selectedBrand || null
+      );
+    } else {
+      // إذا لم يكن هناك selectedCategorySlug، استخدم نفس الصفحة مع path segments
+      // مثال: /Goalkeeperapparel/black/size-large
+      // إزالة أي path segments موجودة من pathname (مثل /Goalkeeperapparel/black -> /Goalkeeperapparel)
+      const currentPath = typeof window !== "undefined" ? window.location.pathname : pathname;
+      const pathParts = currentPath.split('/').filter(p => p);
+      const basePath = '/' + (pathParts[0] || '');
+      newUrl = buildParentPageUrl(
+        basePath,
+        selectedAttributes,
+        selectedBrand || null
+      );
     }
     
-    // Build URL with path segments: /products/[category slug]/[attributes]
-    const newUrl = buildPathSegmentUrl(
-      selectedCategorySlug || null,
-      selectedAttributes,
-      selectedBrand || null
-    );
-    
-    // If buildPathSegmentUrl returns null (no categorySlug), don't update URL
-    if (!newUrl) {
-      return;
-    }
-    
-    // Check if URL actually changed to avoid unnecessary updates
-    const currentUrl = typeof window !== "undefined" ? window.location.pathname + window.location.search : "";
-    if (currentUrl !== newUrl && newUrl !== "/products" && newUrl !== null) {
-      // Only update if newUrl is valid and not the removed /products route
-      isUpdatingUrlRef.current = true;
-      router.replace(newUrl, { scroll: false });
+    if (newUrl) {
+      const currentUrl = typeof window !== "undefined" ? window.location.pathname + window.location.search : "";
       
-      // Reset flag after a short delay to allow URL to update
-      setTimeout(() => {
-        isUpdatingUrlRef.current = false;
-      }, 100);
+      // في التحميل الأولي، إذا كان URL الحالي يحتوي على path segments، لا تحدثه
+      if (isInitialLoadRef.current) {
+        const currentPathParts = currentUrl.split('?')[0].split('/').filter(p => p);
+        if (currentPathParts.length > 1) {
+          // URL يحتوي على path segments، لا تحدثه في التحميل الأولي
+          isInitialLoadRef.current = false;
+          return;
+        }
+        isInitialLoadRef.current = false;
+      }
+      
+      // تحقق من أن URL الحالي مختلف فعلاً قبل التحديث
+      if (currentUrl !== newUrl && newUrl !== "/products") {
+        isUpdatingUrlRef.current = true;
+        router.replace(newUrl, { scroll: false });
+        
+        setTimeout(() => {
+          isUpdatingUrlRef.current = false;
+        }, 300);
+      }
     }
-  }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router, pathname]);
+  }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router]);
 
   const indexOfLastProduct = currentPage * productsPerPage;
   const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
@@ -314,8 +418,9 @@ useEffect(() => {
           <Sidebar
             categories={categoriesWithProducts}
             onSelectCategory={(catId) => {
-              // 🔹 استخدام router.push مع slug للتنقل بسلاسة
-              const selectedCat = categoriesWithProducts.find((c) => {
+              // 🔹 استخدام جميع الـ categories للبحث (وليس فقط categoriesWithProducts)
+              // هذا يسمح بالتنقل إلى subCategories من صفحات أخرى
+              const selectedCat = categories.find((c) => {
                 return String(c.id) === String(catId) || c.id === catId;
               });
               
@@ -435,11 +540,11 @@ useEffect(() => {
         {/* تفاصيل المنتج */}
         <div className="p-4 flex flex-col flex-grow justify-between">
           <h3 className="text-base text-gray-700 text-center font-bold mb-1">
-            {product.brand?.name}
+            <DynamicText>{product.brand?.name || ''}</DynamicText>
           </h3>
 
           <p className="text-center text-sm text-gray-500 line-clamp-2 mb-3">
-            {product.name}
+            <DynamicText>{product.name || ''}</DynamicText>
           </p>
 
           {/* السعر */}

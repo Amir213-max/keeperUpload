@@ -13,6 +13,7 @@ import { useTranslation } from "../contexts/TranslationContext";
 import { motion } from "framer-motion";
 import MultiSlider_6 from "./Slider_6";
 import Loader from "./Loader";
+import DynamicText from "../components/DynamicText";
 
 export default function HomePageBlocks() {
   const { lang } = useTranslation();
@@ -192,8 +193,8 @@ export default function HomePageBlocks() {
                 className={`relative overflow-hidden bg-black w-full group
                   ${
                     isTwoBanners
-                      ? "aspect-[800/741] md:aspect-[5/3]"
-                      : "aspect-[800/741] md:aspect-[2500/833]"
+                           ? "aspect-[4/3] sm:aspect-[5/3]"
+                            : "aspect-[4/3] sm:aspect-[2500/833]"
                   }
                 `}
               >
@@ -324,11 +325,13 @@ export default function HomePageBlocks() {
 {/* 🔹 Product Info */}
 <div className="p-4 text-center overflow-hidden flex flex-col justify-between">
   {product.brand?.name && (
-    <p className="text-gray-300 text-sm mb-1">{product.brand.name}</p>
+    <p className="text-gray-300 text-sm mb-1">
+      <DynamicText>{product.brand.name}</DynamicText>
+    </p>
   )}
 
   <h3 className="text-white text-sm sm:text-base font-medium line-clamp-2 mb-2">
-    {product.name}
+    <DynamicText>{product.name || ''}</DynamicText>
   </h3>
 
   <div className="text-white font-bold text-lg">

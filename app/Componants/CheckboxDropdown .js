@@ -23,7 +23,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange }) {
   const hasMoreFilters = attributeValues.length > 4;
 
   return (
-    <div className="space-y-4 overflow-x-hidden w-full">
+    <div className="space-y-4  w-full">
       {/* Desktop View - Flex Wrap */}
       <div className="hidden md:flex flex-wrap gap-2 items-center">
         {visibleFilters.map(({ attribute, values }) => (
@@ -43,7 +43,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange }) {
         {hasMoreFilters && !showAllFilters && (
           <button
             onClick={() => setShowAllFilters(true)}
-            className="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 border border-gray-600 shadow hover:shadow-md focus:outline-none rounded transition-all"
+            className="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 border border-gray-600 shadow hover:shadow-md focus:outline-none  transition-all"
           >
             {t("More Filters")} ({attributeValues.length - 4})
           </button>
@@ -51,7 +51,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange }) {
         {showAllFilters && hasMoreFilters && (
           <button
             onClick={() => setShowAllFilters(false)}
-            className="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 border border-gray-600 shadow hover:shadow-md focus:outline-none rounded transition-all"
+            className="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 border border-gray-600 shadow hover:shadow-md focus:outline-none  transition-all"
           >
             {t("Show Less")}
           </button>
@@ -87,7 +87,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange }) {
                   px-5 py-2.5 cursor-pointer
                   transition-all duration-300 ease-in-out
                   whitespace-nowrap w-fit
-                  rounded-lg
+                  
                   ${
                     openDropdown === attribute
                       ? 'bg-gradient-to-r text-white from-gray-400 to-gray-500 shadow-lg transform scale-105'
@@ -107,7 +107,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange }) {
 
         {/* Dropdown Content for Mobile */}
         {openDropdown && (
-          <div className="mt-4 bg-white border border-gray-200 shadow-lg rounded-lg p-4 z-50">
+          <div className="mt-4 bg-white border border-gray-200 shadow-lg  p-4 z-50">
             <Dropdown
               attribute={openDropdown}
               values={attributeValues.find(a => a.attribute === openDropdown)?.values || []}
@@ -180,8 +180,7 @@ function Dropdown({ attribute, values, selected, onChange, isMobile = false, onC
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('touchstart', handleClickOutside);
     };
-  }, [selected, isMobile, onClose]);
-
+  }, [selected, isMobile, onClose])
   const toggleOption = (value) => {
     const updated = tempSelected.includes(value)
       ? tempSelected.filter((v) => v !== value)
@@ -216,7 +215,7 @@ function Dropdown({ attribute, values, selected, onChange, isMobile = false, onC
           {values.map((value) => (
             <label
               key={value}
-              className="flex items-center justify-between cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+              className="flex items-center justify-between cursor-pointer hover:bg-gray-100 px-2 py-1 "
             >
               <div className="flex items-center space-x-2">
                 <input
@@ -234,7 +233,7 @@ function Dropdown({ attribute, values, selected, onChange, isMobile = false, onC
         <div className="flex justify-end mt-4">
           <button
             onClick={confirmSelection}
-            className="px-3 py-1 text-sm bg-black text-white hover:bg-gray-900 transition rounded"
+            className="px-3 py-1 text-sm bg-black text-white hover:bg-gray-900 transition "
           >
             {t("Done ✔")}
           </button>
@@ -246,55 +245,88 @@ function Dropdown({ attribute, values, selected, onChange, isMobile = false, onC
   // على Desktop، نعرض dropdown عادي
   const [isOpen, setIsOpen] = useState(false);
 
+  // إغلاق الـ Dropdown عند الضغط خارجها
+  useEffect(() => {
+    if (isOpen) {
+      const handleClickOutside = (event) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+          setIsOpen(false);
+          setTempSelected(selected);
+        }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('touchstart', handleClickOutside);
+      };
+    }
+  }, [isOpen, selected]);
+
   return (
-    <div className="relative w-full sm:w-64 md:w-48" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex justify-between items-center cursor-pointer px-3 py-2 text-sm text-neutral-700 font-medium bg-white border border-gray-300 shadow hover:bg-gray-50 focus:outline-none rounded"
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-      >
-        <span>{attribute} {selected.length > 0 && `(${selected.length})`}</span>
-        <ChevronDownIcon
-          className={`w-5 h-5 transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </button>
+    <>
+      {/* Backdrop */}
+        {isOpen && (
+          <div 
+            className="fixed inset-0 bg-black/30 z-[99]"
+            onClick={() => {
+              setIsOpen(false);
+              setTempSelected(selected);
+            }}
+          />
+        )}
 
-      {isOpen && (
-        <div className="absolute mt-2 w-full bg-white border border-gray-200 shadow-lg z-50 max-h-64 overflow-y-auto rounded">
-          <div className="p-3 space-y-2 text-gray-800 text-sm">
-            {values.map((value) => (
-              <label
-                key={value}
-                className="flex items-center justify-between cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
-              >
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={tempSelected.includes(value)}
-                    onChange={() => toggleOption(value)}
-                    className="accent-blue-600"
-                  />
-                  <span>{value}</span>
-                </div>
-                {tempSelected.includes(value) && <CheckIcon className="w-4 h-4 text-blue-600" />}
-              </label>
-            ))}
+      <div className="relative w-full sm:w-64 md:w-48" ref={dropdownRef}>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full flex justify-between items-center cursor-pointer px-3 py-2 text-sm text-neutral-700 font-medium bg-white border border-gray-300 shadow hover:bg-gray-50 focus:outline-none "
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+        >
+          <span>{attribute} {selected.length > 0 && `(${selected.length})`}</span>
+          <ChevronDownIcon
+            className={`w-5 h-5 transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
 
-            <div className="flex justify-end mt-4">
-              <button
-                onClick={() => {
-                  confirmSelection();
-                  setIsOpen(false);
-                }}
-                className="px-3 py-1 text-sm bg-black text-white hover:bg-gray-900 transition rounded"
-              >
-                {t("Done ✔")}
-              </button>
+        {isOpen && (
+          <div className="absolute mt-2 w-full bg-white border border-gray-300 shadow-xl z-[100] max-h-80 overflow-y-auto">
+            <div className="p-2 space-y-1 text-gray-800 text-sm">
+              {values.map((value) => (
+                <label
+                  key={value}
+                  className="flex items-center justify-between cursor-pointer hover:bg-gray-50 px-3 py-2  transition-colors"
+                >
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={tempSelected.includes(value)}
+                      onChange={() => toggleOption(value)}
+                      className="accent-blue-600"
+                    />
+                    <span>{value}</span>
+                  </div>
+                  {tempSelected.includes(value) && <CheckIcon className="w-4 h-4 text-blue-600" />}
+                </label>
+              ))}
+
+              <div className="flex justify-end mt-3 pt-3 border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    confirmSelection();
+                    setIsOpen(false);
+                  }}
+                  className="px-4 py-2 text-sm font-medium bg-black text-white hover:bg-gray-800 transition "
+                >
+                  {t("Done ✔")}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }

@@ -24,7 +24,7 @@ import {
   parsePathSegments,
 } from "../lib/urlSlugHelper";
 
-export default function ProductsClientPage({ products, brands, attributeValues, categoryId: initialCategoryId, categorySlug: initialCategorySlug, rootCategory }) {
+export default function ProductsClientPage({ products, brands, attributeValues, categoryId: initialCategoryId, categorySlug: initialCategorySlug, rootCategory, currentPage: initialPage = 1, totalCount = 0, hasMore = false }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -59,8 +59,11 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
   const { selectedCategoryId, setSelectedCategoryId } = useCategory();
   const [selectedCategoryName, setSelectedCategoryName] = useState(null);
   const [filteredProducts, setFilteredProducts] = useState(products);
-  const [currentPage, setCurrentPage] = useState(1);
-  const productsPerPage = 20;
+  const [currentPage, setCurrentPage] = useState(() => {
+    const pageParam = searchParams.get('page');
+    return pageParam ? parseInt(pageParam, 10) : initialPage;
+  });
+  const productsPerPage = 30;
   const { loading: currencyLoading } = useCurrency();
   const { t, language } = useTranslation();
 
@@ -241,19 +244,32 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     const newUrl = buildPathSegmentUrl(
       selectedCategorySlug || null,
       selectedAttributes,
-      selectedBrand || null
+      selectedBrand || null,
+      currentPage > 1 ? currentPage : null
     );
 
     // Only update if newUrl is valid (not null) to prevent errors
     if (newUrl) {
       router.replace(newUrl, { scroll: false });
     }
-  }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, router]);
+  }, [selectedBrand, selectedCategoryId, selectedCategorySlug, selectedAttributes, currentPage, router]);
 
-  const indexOfLastProduct = currentPage * productsPerPage;
-  const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
-  const currentProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct);
-  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+  // Update currentPage when URL changes
+  useEffect(() => {
+    const pageParam = searchParams.get('page');
+    if (pageParam) {
+      const page = parseInt(pageParam, 10);
+      if (page !== currentPage && page > 0) {
+        setCurrentPage(page);
+      }
+    } else if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchParams]);
+
+  // استخدام المنتجات مباشرة من السيرفر (server-side pagination)
+  const currentProducts = filteredProducts;
+  const totalPages = Math.ceil((totalCount || filteredProducts.length) / productsPerPage);
 
   // 🔹 معالجة URL الصورة
   const getImageUrl = (image) => {
@@ -413,7 +429,18 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
           {totalPages > 1 && (
             <div className="flex justify-center items-center gap-4 mt-6 select-none">
               <button
-                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                onClick={() => {
+                  const newPage = Math.max(currentPage - 1, 1);
+                  const newUrl = buildPathSegmentUrl(
+                    selectedCategorySlug || null,
+                    selectedAttributes,
+                    selectedBrand || null,
+                    newPage === 1 ? null : newPage
+                  );
+                  if (newUrl) {
+                    router.push(newUrl, { scroll: false });
+                  }
+                }}
                 disabled={currentPage === 1}
                 className="px-3 py-2 bg-gray-200 text-gray-700 disabled:opacity-50 hover:bg-gray-300 transition"
               >
@@ -431,7 +458,17 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
                     return (
                       <button
                         key={idx}
-                        onClick={() => setCurrentPage(pageNumber)}
+                        onClick={() => {
+                          const newUrl = buildPathSegmentUrl(
+                            selectedCategorySlug || null,
+                            selectedAttributes,
+                            selectedBrand || null,
+                            pageNumber === 1 ? null : pageNumber
+                          );
+                          if (newUrl) {
+                            router.push(newUrl, { scroll: false });
+                          }
+                        }}
                         className={`px-3 py-2 text-sm sm:text-base transition ${
                           currentPage === pageNumber
                             ? "bg-[#1f2323] text-white shadow-md"
@@ -453,7 +490,18 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
               </div>
 
               <button
-                onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                onClick={() => {
+                  const newPage = Math.min(currentPage + 1, totalPages);
+                  const newUrl = buildPathSegmentUrl(
+                    selectedCategorySlug || null,
+                    selectedAttributes,
+                    selectedBrand || null,
+                    newPage
+                  );
+                  if (newUrl) {
+                    router.push(newUrl, { scroll: false });
+                  }
+                }}
                 disabled={currentPage === totalPages}
                 className="px-3 py-2 bg-gray-200 text-gray-700 disabled:opacity-50 hover:bg-gray-300 transition"
               >

@@ -1,26 +1,23 @@
 import { Suspense } from "react";
-import { graphqlClient } from "../lib/graphqlClient";
-import { PRODUCTS_BY_CATEGORY_QUERY } from "../lib/queries";
-import { removeDuplicateProducts } from "../lib/removeDuplicateProducts";
-import TeamsportClientPage from "./TeamsportClientPage";
-import Loader from "../Componants/Loader";
+import { graphqlClient } from "../../lib/graphqlClient";
+import { PRODUCTS_BY_CATEGORY_QUERY } from "../../lib/queries";
+import { removeDuplicateProducts } from "../../lib/removeDuplicateProducts";
+import GoalKeeperClientPage from "../GoalkeeperClientPage";
+import Loader from "../../Componants/Loader";
 
-const FOOTBALL_BOOTS_CATEGORY_ID = "21"; 
-// تقدر تعدل الـ ID أو تخليها Array وتعرض أكتر من SubCategory لو حابب
+const GOALKEEPER_GLOVES_CATEGORY_ID = "17"; 
 
 /**
- * IMPORTANT: 
- * - The GraphQL schema does NOT support `limit` on `rootCategory.products`
- * - Must fetch products by categoryId to prevent 503 errors
- * - Client-side slicing (24 items) is applied after fetching
+ * ✅ جلب جميع المنتجات من الكاتيجوري والسب كاتيجوريز
+ * - يستخدم PRODUCTS_BY_CATEGORY_QUERY الذي يجلب جميع المنتجات
  */
 const fetchProductsByCategory = async () => {
   const variables = { 
-    categoryId: FOOTBALL_BOOTS_CATEGORY_ID
+    categoryId: GOALKEEPER_GLOVES_CATEGORY_ID
   };
   const data = await graphqlClient.request(PRODUCTS_BY_CATEGORY_QUERY, variables);
 
-  // 🟢 جمع المنتجات الخاصة بالكاتيجوري + المنتجات الخاصة بالسب كاتيجوريز
+  // 🟢 جمع المنتجات من الكاتيجوري والسب كاتيجوريز
   let products = data.rootCategory?.products || [];
 
   if (data.rootCategory?.subCategories) {
@@ -34,13 +31,16 @@ const fetchProductsByCategory = async () => {
   // ✅ إزالة المنتجات المكررة بناءً على product.id
   products = removeDuplicateProducts(products);
 
-  // ✅ ترتيب المنتجات من الأحدث للأقدم
+  // 🟢 ترتيب المنتجات من الأحدث إلى الأقدم حسب created_at
   products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  return { products, rootCategory: data.rootCategory };
+  return { 
+    products, 
+    rootCategory: data.rootCategory
+  };
 };
 
-export default async function Page() {
+export default async function Page({ params }) {
   const { products, rootCategory } = await fetchProductsByCategory();
 
   // 🟢 تجهيز الـ Attributes (فلترة بالخصائص زي الحجم أو اللون)
@@ -69,12 +69,13 @@ export default async function Page() {
 
   return (
     <Suspense fallback={<Loader />}>
-      <TeamsportClientPage 
+      <GoalKeeperClientPage 
         products={products} 
         brands={brands} 
-        attributeValues={attributeValues}
+        attributeValues={attributeValues} 
         rootCategory={rootCategory}
       />
     </Suspense>
   );
 }
+

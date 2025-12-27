@@ -62,7 +62,7 @@ export default function BrandsSlider({ brands, onBrandClick, selectedBrand }) {
                 px-5 py-2.5 cursor-pointer
                 transition-all duration-300 ease-in-out
                 whitespace-nowrap w-fit
-                rounded-lg
+               
                 ${
                   selectedBrand === brand
                     ? 'bg-gradient-to-r text-white from-gray-400 to-gray-500 text-gray-900 shadow-lg transform scale-105'
