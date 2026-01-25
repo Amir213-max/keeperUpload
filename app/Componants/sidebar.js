@@ -191,15 +191,57 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
       // 🔹 حفظ parentId في localStorage لفتح الـ subcategories بعد التنقل
       localStorage.setItem('sidebar_open_parent_id', String(parentId));
       
-      // Navigate to main category page
-      router.push(route, { scroll: false });
-      console.log("✅ Navigating to parent category page:", route, parentName);
+      // 🔹 قائمة parent category routes
+      const parentRoutes = [
+        '/GoalkeeperGloves',
+        '/FootballBoots',
+        '/Goalkeeperapparel',
+        '/Goalkeeperequipment',
+        '/Teamsport',
+        '/Sale'
+      ];
+      
+      // 🔹 التحقق من أننا في صفحة subcategory (مثل /products/...)
+      const isSubcategoryPage = pathname.startsWith('/products/');
+      
+      // 🔹 التحقق من أننا في parent category page حالياً
+      const isCurrentParentPage = parentRoutes.some(parentRoute => pathname === parentRoute || pathname.startsWith(parentRoute + '/'));
+      
+      // 🔹 التحقق إذا كنا في نفس parent category page
+      const isSameParentPage = pathname === route || pathname.startsWith(route + '/');
+      
+      if (isSubcategoryPage) {
+        // 🔹 إذا كنا في صفحة subcategory، عمل reload كامل للصفحة
+        // استخدام window.location.replace لضمان reload كامل واستدعاء البيانات من الخادم
+        window.location.replace(route);
+        console.log("✅ Reloading parent category page from subcategory with fresh data:", route, parentName);
+      } else if (isSameParentPage) {
+        // 🔹 إذا كنا في نفس parent category page، عمل reload لاستدعاء البيانات مرة أخرى
+        window.location.replace(route);
+        console.log("✅ Reloading same parent category page to refresh data:", route, parentName);
+      } else if (isCurrentParentPage && pathname !== route) {
+        // 🔹 إذا كنا في parent category مختلف وننتقل إلى parent category آخر، عمل reload كامل
+        window.location.replace(route);
+        console.log("✅ Reloading from parent to parent category:", pathname, "->", route);
+      } else {
+        // 🔹 في جميع الحالات الأخرى، عمل reload كامل للصفحة
+        window.location.replace(route);
+        console.log("✅ Reloading parent category page:", route, parentName);
+      }
+      
       if (setIsOpen) setIsOpen(false); // إغلاق الـ drawer على الموبايل
     } else {
       // Fallback: استخدام products/slug إذا لم نجد route رئيسي
       if (parentCategory?.slug) {
         const slug = encodeURIComponent(parentCategory.slug);
-        router.push(`/products/${slug}`, { scroll: false });
+        const isSubcategoryPage = pathname.startsWith('/products/') && pathname !== `/products/${slug}`;
+        
+        if (isSubcategoryPage) {
+          // 🔹 عمل reload إذا كنا في صفحة subcategory مختلفة
+          window.location.href = `/products/${slug}`;
+        } else {
+          router.push(`/products/${slug}`, { scroll: false });
+        }
         console.log("✅ Navigating to products page:", `/products/${slug}`);
         if (setIsOpen) setIsOpen(false);
       } else {

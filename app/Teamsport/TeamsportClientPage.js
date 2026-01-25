@@ -35,6 +35,12 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
   const { loading: currencyLoading } = useCurrency();
   const isRTL = language === "ar"; // ✅ اتجاه الموقع
 
+  // 🔹 عمل refresh للصفحة عند الوصول إليها لاستدعاء البيانات من الـ API
+  useEffect(() => {
+    router.refresh();
+    console.log("✅ Refreshing Teamsport page to fetch fresh data");
+  }, []);
+
   // 🔹 جلب التصنيفات فقط (بدون منتجات)
   // IMPORTANT: Fetch only categories, not products. Fetching all products causes 503 errors.
   useEffect(() => {

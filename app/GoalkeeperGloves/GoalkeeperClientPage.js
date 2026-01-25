@@ -35,6 +35,12 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
   const { t, language } = useTranslation();
   const isRTL = language === "ar";
 
+  // 🔹 عمل refresh للصفحة عند الوصول إليها لاستدعاء البيانات من الـ API
+  useEffect(() => {
+    router.refresh();
+    console.log("✅ Refreshing GoalkeeperGloves page to fetch fresh data");
+  }, []);
+
   // 🔹 جلب التصنيفات فقط (بدون منتجات)
   // IMPORTANT: Fetch only categories, not products. Fetching all products causes 503 errors.
   useEffect(() => {

@@ -37,6 +37,12 @@ export default function ApparelClientPage({ products, brands, attributeValues, r
   const isRTL = language === "ar"; // ✅ اتجاه الموقع
 const [currencyRate, setCurrencyRate] = useState(null);
 
+  // 🔹 عمل refresh للصفحة عند الوصول إليها لاستدعاء البيانات من الـ API
+  useEffect(() => {
+    router.refresh();
+    console.log("✅ Refreshing Goalkeeperapparel page to fetch fresh data");
+  }, []);
+
 useEffect(() => {
   const fetchRate = async () => {
     try {

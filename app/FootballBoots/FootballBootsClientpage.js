@@ -36,6 +36,12 @@ export default function FootballClientPage({ products, brands, attributeValues, 
 const [currencyRate, setCurrencyRate] = useState(null);
 const hasInitializedFromUrlRef = useRef(false);
 
+  // 🔹 عمل refresh للصفحة عند الوصول إليها لاستدعاء البيانات من الـ API
+  useEffect(() => {
+    router.refresh();
+    console.log("✅ Refreshing FootballBoots page to fetch fresh data");
+  }, []);
+
 useEffect(() => {
   const fetchRate = async () => {
     try {

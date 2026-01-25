@@ -37,6 +37,12 @@ export default function EquipmentClientPage({ products, brands, attributeValues,
   const isRTL = language === "ar"; // ✅ اتجاه الموقع
 const [currencyRate, setCurrencyRate] = useState(null);
 
+  // 🔹 عمل refresh للصفحة عند الوصول إليها لاستدعاء البيانات من الـ API
+  useEffect(() => {
+    router.refresh();
+    console.log("✅ Refreshing Goalkeeperequipment page to fetch fresh data");
+  }, []);
+
 useEffect(() => {
   const fetchRate = async () => {
     try {
