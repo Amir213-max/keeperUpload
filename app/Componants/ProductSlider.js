@@ -15,7 +15,7 @@ export default function ProductSlider({ images, productName }) {
   const [mounted, setMounted] = useState(false);
   const swiperRef = useRef(null);
   const loadTimeoutRef = useRef(null);
-  const imageCheckRef = useRef(null);
+  const previousImagesRef = useRef(null);
 
   // 🔹 Memoize direction to prevent unnecessary re-renders
   useEffect(() => {
@@ -45,15 +45,27 @@ export default function ProductSlider({ images, productName }) {
   const hasImages = useMemo(() => Array.isArray(images) && images.length > 0, [images]);
 
 
-  // 🔹 إعادة تعيين حالة التحميل عند تغيير الصور
+  // 🔹 إعادة تعيين حالة التحميل عند تغيير الصور (فقط إذا تغيرت فعلياً)
   useEffect(() => {
+    // التحقق من أن الصور تغيرت فعلياً
+    const currentImagesKey = images?.map(img => img).join(',') || '';
+    const previousImagesKey = previousImagesRef.current || '';
+    
+    // إذا كانت الصور نفسها، لا تفعل شيء
+    if (currentImagesKey === previousImagesKey && previousImagesKey !== '') {
+      return;
+    }
+
+    // حفظ الصور الحالية للمقارنة المستقبلية
+    previousImagesRef.current = currentImagesKey;
+
     // تنظيف timeout السابق
     if (loadTimeoutRef.current) {
       clearTimeout(loadTimeoutRef.current);
       loadTimeoutRef.current = null;
     }
 
-    // إعادة تعيين الحالة - دائماً نبدأ بـ false لإظهار الـ loader
+    // إعادة تعيين الحالة - فقط عند تغيير الصور فعلياً
     setImageLoaded(false);
 
     // إضافة timeout احتياطي (3 ثواني كحد أقصى) لإخفاء الـ loader في حالة فشل التحميل

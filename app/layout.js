@@ -32,6 +32,12 @@ export const metadata = {
   title: "كيبر سبورت | أكبر تشكيلة من قفازات حراس المرمى، أحذية كرة القدم، ملابس ومعدات احترافية",
   description:
     "كيبر سبورت | أكبر تشكيلة من قفازات حراس المرمى، أحذية كرة القدم، ملابس ومعدات احترافية",
+  
+  icons: {
+    icon: '/logo.jpg',
+    shortcut: '/logo.jpg',
+    apple: '/logo.jpg',
+  },
 
   openGraph: {
     title: "كيبر سبورت | أكبر تشكيلة من قفازات حراس المرمى، أحذية كرة القدم، ملابس ومعدات احترافية",
@@ -41,7 +47,7 @@ export const metadata = {
     siteName: "KeeperSport",
     images: [
       {
-        url: "https://www.keepersport.sa/og/og-image.jpg",
+        url: "https://www.keepersport.sa/logo.jpg",
         width: 1200,
         height: 630,
         alt: "كيبر سبورت | أكبر تشكيلة من قفازات حراس المرمى، أحذية كرة القدم، ملابس ومعدات احترافية",
@@ -56,7 +62,7 @@ export const metadata = {
     title: " كيبر سبورت | أكبر تشكيلة من قفازات حراس المرمى، أحذية كرة القدم، ملابس ومعدات احترافية",
     description:
       "كيبر سبورت | أكبر تشكيلة من قفازات حراس المرمى، أحذية كرة القدم، ملابس ومعدات احترافية",
-    images: ["https://www.keepersport.sa/og/og-image.jpg"],
+    images: ["https://www.keepersport.sa/logo.jpg"],
   },
 };
 
@@ -67,7 +73,6 @@ export default function RootLayout({ children  }) {
   return (
     
     <html lang="ar" dir="rtl">
-
      <body className={`${geistSans.variable} ${geistMono.variable}`}>
 
    <TranslationProvider>
