@@ -129,8 +129,8 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
       if (exists) {
         setOpenParentId(parentId);
         localStorage.removeItem('sidebar_open_parent_id'); // تنظيف بعد الاستخدام
-        return;
-      }
+      return;
+    }
     }
 
     // التحقق من الـ URL الحالي
@@ -140,43 +140,43 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
     }
   }, [pathname, parentCategories, getParentIdFromRoute]);
 
-  // 🔹 دالة لتحويل اسم الـ category إلى route رئيسي
-  const getParentRoute = (name) => {
-    let nameStr = '';
-    
-    // معالجة الـ name (قد يكون JSON string أو string عادي)
-    try {
-      const parsed = JSON.parse(name || '{}');
-      nameStr = parsed.en || parsed.ar || name || '';
-    } catch {
-      nameStr = name || '';
-    }
+    // 🔹 دالة لتحويل اسم الـ category إلى route رئيسي
+    const getParentRoute = (name) => {
+      let nameStr = '';
+      
+      // معالجة الـ name (قد يكون JSON string أو string عادي)
+      try {
+        const parsed = JSON.parse(name || '{}');
+        nameStr = parsed.en || parsed.ar || name || '';
+      } catch {
+        nameStr = name || '';
+      }
 
-    // Normalize الاسم (إزالة المسافات الزائدة وتحويل لحروف صغيرة)
-    const normalized = nameStr.toLowerCase().trim();
+      // Normalize الاسم (إزالة المسافات الزائدة وتحويل لحروف صغيرة)
+      const normalized = nameStr.toLowerCase().trim();
 
-    // Mapping بين الأسماء والـ routes الرئيسية
-    if (normalized.includes('goalkeeper') && normalized.includes('gloves')) {
-      return '/GoalkeeperGloves';
-    }
-    if (normalized.includes('football') && normalized.includes('boots')) {
-      return '/FootballBoots';
-    }
-    if (normalized.includes('goalkeeper') && normalized.includes('apparel')) {
-      return '/Goalkeeperapparel';
-    }
-    if (normalized.includes('goalkeeper') && normalized.includes('equipment')) {
-      return '/Goalkeeperequipment';
-    }
-    if (normalized.includes('teamsport')) {
-      return '/Teamsport';
-    }
-    if (normalized.includes('sale')) {
-      return '/Sale';
-    }
+      // Mapping بين الأسماء والـ routes الرئيسية
+      if (normalized.includes('goalkeeper') && normalized.includes('gloves')) {
+        return '/GoalkeeperGloves';
+      }
+      if (normalized.includes('football') && normalized.includes('boots')) {
+        return '/FootballBoots';
+      }
+      if (normalized.includes('goalkeeper') && normalized.includes('apparel')) {
+        return '/Goalkeeperapparel';
+      }
+      if (normalized.includes('goalkeeper') && normalized.includes('equipment')) {
+        return '/Goalkeeperequipment';
+      }
+      if (normalized.includes('teamsport')) {
+        return '/Teamsport';
+      }
+      if (normalized.includes('sale')) {
+        return '/Sale';
+      }
 
-    return null;
-  };
+      return null;
+    };
 
   const handleParentClick = (parentId, parentName, event) => {
     // 🔹 البحث عن الـ parent category من categories
@@ -240,7 +240,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
           // 🔹 عمل reload إذا كنا في صفحة subcategory مختلفة
           window.location.href = `/products/${slug}`;
         } else {
-          router.push(`/products/${slug}`, { scroll: false });
+        router.push(`/products/${slug}`, { scroll: false });
         }
         console.log("✅ Navigating to products page:", `/products/${slug}`);
         if (setIsOpen) setIsOpen(false);

@@ -237,12 +237,12 @@ const [currencyRate, setCurrencyRate] = useState(null);
 
           {/* 🔹 Filters Dropdown - Only show if there are products */}
           {filteredProducts.length > 0 && (
-            <div className="flex mb-4 mt-4 gap-3 flex-wrap">
-              <FilterDropdown
-                attributeValues={attributeValues}
-                onFilterChange={setSelectedAttributes}
-              />
-            </div>
+          <div className="flex mb-4 mt-4 gap-3 flex-wrap">
+            <FilterDropdown
+              attributeValues={attributeValues}
+              onFilterChange={setSelectedAttributes}
+            />
+          </div>
           )}
 
           {/* 🔹 Products Grid - Only show if there are products */}

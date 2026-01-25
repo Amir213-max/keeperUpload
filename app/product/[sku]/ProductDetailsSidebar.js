@@ -27,7 +27,7 @@ export default function ProductDetailsSidebar({ product }) {
     loading: currencyLoading,
   } = useCurrency();
 
-  // 🧩 تجهيز الخصائص
+  // 🧩 تجهيز الخصائص من productAttributeValues
   const attributesMap = {};
   product.productAttributeValues?.forEach((val) => {
     if (!attributesMap[val.attribute.label]) {
@@ -37,6 +37,39 @@ export default function ProductDetailsSidebar({ product }) {
       attributesMap[val.attribute.label].push(val.key);
     }
   });
+
+  // 🔹 إضافة المقاسات من variants إذا لم تكن موجودة في productAttributeValues
+  if (product.variants && product.variants.length > 0) {
+    // البحث عن label "Size" الموجود في attributesMap
+    const existingSizeLabel = Object.keys(attributesMap).find(
+      (label) => label.toLowerCase().includes('size')
+    );
+
+    // استخراج المقاسات من variants.size (وليس variant.name)
+    const sizesFromVariants = [];
+    product.variants.forEach((variant) => {
+      if (variant.size && variant.size.trim() && !sizesFromVariants.includes(variant.size)) {
+        sizesFromVariants.push(variant.size);
+      }
+    });
+
+    // إذا كان هناك مقاسات من variants
+    if (sizesFromVariants.length > 0) {
+      if (existingSizeLabel) {
+        // إذا كان هناك size label موجود، أضف المقاسات من variants إليه
+        sizesFromVariants.forEach((size) => {
+          if (!attributesMap[existingSizeLabel].includes(size)) {
+            attributesMap[existingSizeLabel].push(size);
+          }
+        });
+      } else {
+        // إذا لم يكن هناك size label، أنشئ واحد جديد من variants
+        // استخدام "Size" كافتراضي
+        const sizeLabel = 'Size';
+        attributesMap[sizeLabel] = [...sizesFromVariants];
+      }
+    }
+  }
 
   // 🛒 إضافة المنتج للسلة
 const addToCart = async () => {
@@ -230,8 +263,6 @@ useEffect(() => {
       )
       .sort(([a], [b]) => (a.toLowerCase().includes('size') ? -1 : 1))
       .map(([label, values]) => {
-        const [open, setOpen] = useState(false);
-
         return (
           <div key={label} className="space-y-3 relative">
             <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wide">

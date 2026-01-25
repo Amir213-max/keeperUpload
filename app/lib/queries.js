@@ -591,6 +591,7 @@ export const GET_PRODUCT_BY_SKU = gql`
         id
         name
         price
+        size
       }
       productAttributeValues {
         id

@@ -43,7 +43,7 @@ export function useDynamicTranslation(text, lang) {
       console.log('🌐 [BROWSER] Language changed:', {
         from: prevLangRef.current,
         to: lang,
-      });
+    });
       prevLangRef.current = lang;
       
       // CRITICAL: Clear cache when language changes to force fresh translation
@@ -73,7 +73,7 @@ export function useDynamicTranslation(text, lang) {
       setIsTranslating(false);
       return;
     }
-
+    
     // CRITICAL: When lang === "en" → ALWAYS show original, NO translation
     if (lang === 'en') {
       console.log('🛑 Skipping translation because lang === "en"');
@@ -103,7 +103,7 @@ export function useDynamicTranslation(text, lang) {
         try {
           setIsTranslating(true);
           console.log('🌍 Translating:', text.substring(0, 50) + (text.length > 50 ? '...' : ''), '=>', lang);
-
+    
           const result = await translateText(text, lang);
 
           if (!cancelled && !cancelledRef.current) {
@@ -119,17 +119,17 @@ export function useDynamicTranslation(text, lang) {
         } finally {
           if (!cancelled && !cancelledRef.current) {
             setIsTranslating(false);
-          }
+      }
         }
       }
 
       runTranslation();
 
-      return () => {
+    return () => {
         cancelled = true;
         cancelledRef.current = true;
       };
-    }
+      }
   }, [text, lang]);
 
   return { translatedText, isTranslating };

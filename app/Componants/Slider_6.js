@@ -89,19 +89,19 @@ export default function MultiSlider_6() {
             return (
               <SplideSlide key={brandId || index}>
                 <Link href={`/brands/${encodeURIComponent(brandName)}`}>
-                  <div className="  shadow-md overflow-hidden w-full flex flex-col h-32 cursor-pointer hover:scale-105 transition-transform duration-300 bg-black">
-                    <div className="relative w-full h-full flex items-center justify-center p-6">
-                      <Image
-                        loader={customLoader} // ✅ استخدم الـ Loader هنا
-                        src={brand.logo}
+                <div className="  shadow-md overflow-hidden w-full flex flex-col h-32 cursor-pointer hover:scale-105 transition-transform duration-300 bg-black">
+                  <div className="relative w-full h-full flex items-center justify-center p-6">
+                    <Image
+                      loader={customLoader} // ✅ استخدم الـ Loader هنا
+                      src={brand.logo}
                         alt={brandName}
-                        fill
-                        className="object-contain"
-                      />
-                    </div>
+                      fill
+                      className="object-contain"
+                    />
                   </div>
-                </Link>
-              </SplideSlide>
+                </div>
+              </Link>
+            </SplideSlide>
             );
           })
         ) : (
