@@ -197,6 +197,15 @@ export const REMOVE_ITEM_FROM_CART = gql`
   }
 `;
 
+export const APPLY_OFFER_CODE_TO_ORDER = gql`
+  mutation ApplyOfferCodeToOrder($order_id: ID!, $offer_code: String!) {
+    applyOfferCodeToOrder(order_id: $order_id, offer_code: $offer_code) {
+      discount_amount
+      offer_code
+    }
+  }
+`;
+
 
 
 // 🔹 Signup

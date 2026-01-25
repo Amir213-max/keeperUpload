@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { gql } from "graphql-request";
+import toast from "react-hot-toast";
   import { GET_PRODUCT_BY_SKU } from "@/app/lib/queries";
 import { graphqlClient } from "@/app/lib/graphqlClient";
 
@@ -11,6 +12,7 @@ import {
   fetchUserCart,
   REMOVE_ITEM_FROM_CART,
   UPDATE_CART_ITEM_QUANTITY,
+  APPLY_OFFER_CODE_TO_ORDER,
 } from "../lib/mutations";
 import PriceDisplay from "../components/PriceDisplay";
 import DynamicText from "../components/DynamicText";
@@ -61,6 +63,8 @@ export default function CheckoutPage() {
   const [discountAmount, setDiscountAmount] = useState(0);
   const [loadingItem, setLoadingItem] = useState(null);
   const [removingItem, setRemovingItem] = useState(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [orderId, setOrderId] = useState(null);
 
   // ✅ تحديث الكارت للـ guest في localStorage
   const updateGuestCart = (newLineItems) => {
@@ -323,15 +327,210 @@ setShippingCosts({
     }
   };
 
-  // تطبيق كوبون
-  const applyCoupon = () => {
-    if (!couponCode) {
-      alert("من فضلك أدخل كود الخصم");
+  // تطبيق كود الخصم على الطلب
+  const applyCoupon = async () => {
+    if (!couponCode.trim()) {
+      toast.error(t('Please enter discount code') || "من فضلك أدخل كود الخصم", {
+        position: "top-right",
+        duration: 3000,
+        style: {
+          background: '#ef4444',
+          color: '#fff',
+        },
+      });
       return;
     }
-    setAppliedCoupon(couponCode);
-    setDiscountAmount(50); // مثال للخصم
-    alert(`تم تطبيق الكوبون: ${couponCode}`);
+
+    // 🔹 إذا لم يكن هناك order_id، نحتاج إلى إنشاء order أولاً
+    // لكن في checkout_1، عادة لا يوجد order بعد
+    // لذلك سنحتاج إلى إنشاء order مؤقت أو استخدام cart_id
+    
+    // ✅ الحل: إنشاء order من cart أولاً (إذا لم يكن موجوداً)
+    if (!orderId && cartId && cartId !== "guest") {
+      try {
+        setApplyingCoupon(true);
+        
+        // إنشاء order مؤقت من cart
+        const createOrderResponse = await graphqlClient.request(
+          gql`
+            mutation CreateOrderFromCart($cart_id: ID!, $input: CreateOrderFromCartInput!) {
+              createOrderFromCart(cart_id: $cart_id, input: $input) {
+                id
+                number
+                total_amount
+              }
+            }
+          `,
+          {
+            cart_id: cartId,
+            input: {
+              payment_status: "PENDING",
+              shipping_type: selectedShipping || "normal",
+              empty_cart: false,
+            },
+          }
+        );
+        
+        const newOrderId = createOrderResponse.createOrderFromCart.id;
+        setOrderId(newOrderId);
+        
+        // الآن تطبيق كود الخصم
+        const applyResponse = await graphqlClient.request(APPLY_OFFER_CODE_TO_ORDER, {
+          order_id: newOrderId,
+          offer_code: couponCode.trim(),
+        });
+        
+        if (applyResponse.applyOfferCodeToOrder) {
+          const discount = applyResponse.applyOfferCodeToOrder.discount_amount || 0;
+          setDiscountAmount(discount);
+          setAppliedCoupon(couponCode.trim());
+          
+          // ✅ Toast أخضر للنجاح
+          toast.success(
+            t('Discount code applied successfully') || `تم تطبيق كود الخصم بنجاح! الخصم: ${discount} SAR`,
+            {
+              position: "top-right",
+              duration: 4000,
+              style: {
+                background: '#10b981',
+                color: '#fff',
+              },
+            }
+          );
+        }
+      } catch (error) {
+        console.error("❌ Error applying offer code:", error);
+        
+        // 🔹 استخراج رسالة الخطأ من الاستجابة
+        let errorMessage = t('Invalid discount code') || "كود الخصم غير صحيح";
+        
+        if (error.response?.errors && error.response.errors.length > 0) {
+          const graphqlError = error.response.errors[0];
+          const errorMsg = graphqlError.message || "";
+          
+          // 🔹 التحقق من أنواع الأخطاء المختلفة
+          if (errorMsg.toLowerCase().includes('not found') || 
+              errorMsg.toLowerCase().includes('invalid') ||
+              errorMsg.toLowerCase().includes('does not exist') ||
+              errorMsg.toLowerCase().includes('غير موجود')) {
+            errorMessage = t('No discount code found with this value') || "لا يوجد كود خصم بهذه القيمة";
+          } else if (errorMsg.toLowerCase().includes('expired') || errorMsg.toLowerCase().includes('منتهي')) {
+            errorMessage = t('Discount code has expired') || "كود الخصم منتهي الصلاحية";
+          } else if (errorMsg.toLowerCase().includes('already used') || errorMsg.toLowerCase().includes('مستخدم')) {
+            errorMessage = t('Discount code already used') || "كود الخصم مستخدم بالفعل";
+          } else if (errorMsg.toLowerCase().includes('internal server error') || 
+                     errorMsg.toLowerCase().includes('server error') ||
+                     errorMsg.toLowerCase().includes('خطأ في الخادم')) {
+            errorMessage = t('No discount code found with this value') || "لا يوجد كود خصم بهذه القيمة";
+          } else if (errorMsg && errorMsg.trim() !== "") {
+            // إذا كانت هناك رسالة خطأ واضحة، استخدمها
+            errorMessage = errorMsg;
+          }
+        } else if (error.message && !error.message.toLowerCase().includes('internal server error')) {
+          errorMessage = error.message;
+        }
+        
+        // ❌ Toast أحمر للخطأ
+        toast.error(errorMessage, {
+          position: "top-right",
+          duration: 4000,
+          style: {
+            background: '#ef4444',
+            color: '#fff',
+          },
+        });
+        
+        setDiscountAmount(0);
+        setAppliedCoupon(null);
+      } finally {
+        setApplyingCoupon(false);
+      }
+    } else if (orderId) {
+      // ✅ إذا كان order موجود بالفعل، تطبيق الكود مباشرة
+      try {
+        setApplyingCoupon(true);
+        
+        const applyResponse = await graphqlClient.request(APPLY_OFFER_CODE_TO_ORDER, {
+          order_id: orderId,
+          offer_code: couponCode.trim(),
+        });
+        
+        if (applyResponse.applyOfferCodeToOrder) {
+          const discount = applyResponse.applyOfferCodeToOrder.discount_amount || 0;
+          setDiscountAmount(discount);
+          setAppliedCoupon(couponCode.trim());
+          
+          // ✅ Toast أخضر للنجاح
+          toast.success(
+            t('Discount code applied successfully') || `تم تطبيق كود الخصم بنجاح! الخصم: ${discount} SAR`,
+            {
+              position: "top-right",
+              duration: 4000,
+              style: {
+                background: '#10b981',
+                color: '#fff',
+              },
+            }
+          );
+        }
+      } catch (error) {
+        console.error("❌ Error applying offer code:", error);
+        
+        // 🔹 استخراج رسالة الخطأ من الاستجابة
+        let errorMessage = t('Invalid discount code') || "كود الخصم غير صحيح";
+        
+        if (error.response?.errors && error.response.errors.length > 0) {
+          const graphqlError = error.response.errors[0];
+          const errorMsg = graphqlError.message || "";
+          
+          // 🔹 التحقق من أنواع الأخطاء المختلفة
+          if (errorMsg.toLowerCase().includes('not found') || 
+              errorMsg.toLowerCase().includes('invalid') ||
+              errorMsg.toLowerCase().includes('does not exist') ||
+              errorMsg.toLowerCase().includes('غير موجود')) {
+            errorMessage = t('No discount code found with this value') || "لا يوجد كود خصم بهذه القيمة";
+          } else if (errorMsg.toLowerCase().includes('expired') || errorMsg.toLowerCase().includes('منتهي')) {
+            errorMessage = t('Discount code has expired') || "كود الخصم منتهي الصلاحية";
+          } else if (errorMsg.toLowerCase().includes('already used') || errorMsg.toLowerCase().includes('مستخدم')) {
+            errorMessage = t('Discount code already used') || "كود الخصم مستخدم بالفعل";
+          } else if (errorMsg.toLowerCase().includes('internal server error') || 
+                     errorMsg.toLowerCase().includes('server error') ||
+                     errorMsg.toLowerCase().includes('خطأ في الخادم')) {
+            errorMessage = t('No discount code found with this value') || "لا يوجد كود خصم بهذه القيمة";
+          } else if (errorMsg && errorMsg.trim() !== "") {
+            // إذا كانت هناك رسالة خطأ واضحة، استخدمها
+            errorMessage = errorMsg;
+          }
+        } else if (error.message && !error.message.toLowerCase().includes('internal server error')) {
+          errorMessage = error.message;
+        }
+        
+        // ❌ Toast أحمر للخطأ
+        toast.error(errorMessage, {
+          position: "top-right",
+          duration: 4000,
+          style: {
+            background: '#ef4444',
+            color: '#fff',
+          },
+        });
+        
+        setDiscountAmount(0);
+        setAppliedCoupon(null);
+      } finally {
+        setApplyingCoupon(false);
+      }
+    } else {
+      // ⚠️ إذا كان cart guest، لا يمكن تطبيق الكود (يحتاج order)
+      toast.error(t('Please login to apply discount code') || "يرجى تسجيل الدخول لتطبيق كود الخصم", {
+        position: "top-right",
+        duration: 3000,
+        style: {
+          background: '#ef4444',
+          color: '#fff',
+        },
+      });
+    }
   };
 
   // حساب Subtotal بعد الخصم
@@ -580,19 +779,51 @@ setShippingCosts({
                 <h3 className="text-lg font-semibold text-[#111] mb-4">
                   {t('Discount Code') || 'Discount Code'}
                 </h3>
+                {appliedCoupon && (
+                  <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded">
+                    <div className="flex items-center justify-between">
+                      <span className="text-green-700 font-medium">
+                        {t('Applied Code') || 'Applied Code'}: <strong>{appliedCoupon}</strong>
+                      </span>
+                      <button
+                        onClick={() => {
+                          setAppliedCoupon(null);
+                          setDiscountAmount(0);
+                          setCouponCode("");
+                          setOrderId(null);
+                        }}
+                        className="text-red-600 hover:text-red-800 text-sm font-semibold"
+                      >
+                        {t('Remove') || 'Remove'}
+                      </button>
+                    </div>
+                    {discountAmount > 0 && (
+                      <div className="mt-2 text-green-700">
+                        {t('Discount Amount') || 'Discount Amount'}: <strong><PriceDisplay price={discountAmount} /></strong>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-3">
                   <input
                     type="text"
                     placeholder={t('Enter discount code') || 'Enter discount code'}
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value)}
-                    className="flex-1 px-4 py-3 border border-gray-300 focus:border-[#FFD300] focus:ring-2 focus:ring-[#FFD300] focus:ring-opacity-20 outline-none transition-all duration-200 text-[#111] placeholder-[#555]"
+                    disabled={applyingCoupon}
+                    className="flex-1 px-4 py-3 border border-gray-300 focus:border-[#FFD300] focus:ring-2 focus:ring-[#FFD300] focus:ring-opacity-20 outline-none transition-all duration-200 text-[#111] placeholder-[#555] disabled:opacity-50 disabled:cursor-not-allowed"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !applyingCoupon) {
+                        applyCoupon();
+                      }
+                    }}
                   />
                   <button
                     onClick={applyCoupon}
-                    className="bg-[#FFD300] text-[#111] px-6 py-3 font-semibold hover:bg-[#E6BE00] transition-colors duration-200 whitespace-nowrap"
+                    disabled={applyingCoupon || !couponCode.trim()}
+                    className="bg-[#FFD300] text-[#111] px-6 py-3 font-semibold hover:bg-[#E6BE00] transition-colors duration-200 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {t('Apply') || 'Apply'}
+                    {applyingCoupon ? (t('Applying...') || 'Applying...') : (t('Apply') || 'Apply')}
                   </button>
                 </div>
               </div>
