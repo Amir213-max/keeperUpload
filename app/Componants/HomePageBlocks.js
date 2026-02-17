@@ -128,7 +128,7 @@ export default function HomePageBlocks() {
               </h2>
             )}
 
-            <div className="px-1 pb-1 mt-1 space-y-3">
+            <div className=" pb-1  space-y-3">
               {/* 🔹 Slider Block */}
               {block.type === "slider" && block.content?.slides?.length > 0 && (
                 <Splide
