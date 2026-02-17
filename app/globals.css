@@ -98,6 +98,41 @@ body {
   scrollbar-width: none;
 }
 
+/* Custom scrollbar for desktop */
+@media (min-width: 768px) {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 10px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 10px;
+    transition: background 0.3s ease;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+  }
+  
+  .scrollbar-thumb-gray-600::-webkit-scrollbar-thumb {
+    background: #4b5563;
+  }
+  
+  .scrollbar-thumb-gray-500::-webkit-scrollbar-thumb {
+    background: #6b7280;
+  }
+  
+  .scrollbar-track-transparent::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
 
 @media (max-width: 730px) {
   nav#main-links {

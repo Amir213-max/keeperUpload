@@ -128,7 +128,7 @@ export default function HomePageBlocks() {
               </h2>
             )}
 
-            <div className="px-1 pb-2 mt-4 space-y-3">
+            <div className="px-1 pb-1 mt-1 space-y-3">
               {/* 🔹 Slider Block */}
               {block.type === "slider" && block.content?.slides?.length > 0 && (
                 <Splide
@@ -201,9 +201,11 @@ export default function HomePageBlocks() {
                 transition={{ duration: 0.6, delay: idx * 0.1 }}
                 className={`relative overflow-hidden bg-black w-full group
                   ${
-                    isTwoBanners
-                           ? "aspect-[4/3] sm:aspect-[5/3]"
-                            : "aspect-[4/3] sm:aspect-[2500/833]"
+                    block.content.banners.length === 1
+                      ? "aspect-[125/116] sm:aspect-[2500/833]"
+                      : isTwoBanners
+                      ? "aspect-[4/3] sm:aspect-[5/3]"
+                      : "aspect-[4/3] sm:aspect-[2500/833]"
                   }
                 `}
               >
@@ -224,8 +226,8 @@ export default function HomePageBlocks() {
         </div>
       </div>
     ) : (
-      <div className="w-full  md:mx-0 overflow-x-auto no-scrollbar">
-        <div className="flex gap-4 min-w-max pb-2">
+      <div className="w-full md:mx-0 overflow-x-auto scrollbar-thin">
+        <div className="flex gap-4 md:gap-6 min-w-max pb-2 md:pb-4 scroll-smooth">
           {block.content.banners.map((banner, idx) => {
             const imageSrc =
               isMobile && banner.mobile_image
@@ -238,22 +240,53 @@ export default function HomePageBlocks() {
                 href={banner.link || "#"}
                 target={banner.link ? "_blank" : undefined}
                 rel={banner.link ? "noopener noreferrer" : undefined}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: idx * 0.1 }}
-                className="relative flex-shrink-0 overflow-hidden bg-black group aspect-[16/9]"
+                initial={{ opacity: 0, x: 50, scale: 0.9 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                transition={{ 
+                  duration: 0.7, 
+                  delay: idx * 0.15,
+                  ease: [0.25, 0.46, 0.45, 0.94]
+                }}
+                whileHover={{ scale: 1.03, y: -5 }}
+                whileTap={{ scale: 0.97 }}
+                className="relative flex-shrink-0 overflow-hidden bg-gradient-to-br from-gray-900 to-black group aspect-[16/9] rounded-lg md:rounded-xl shadow-lg hover:shadow-2xl transition-all duration-500"
                 style={{
                   width: "clamp(300px, 90vw, 450px)"
                 }}
               >
-                <Image
-                  src={imageSrc}
-                  alt={banner.title || ""}
-                  fill
-                  sizes="(max-width: 768px) 90vw, 450px"
-                  className="object-cover object-center transition-transform duration-500 ease-out group-hover:scale-105"
-                  unoptimized
-                  priority={isFirstBannerBlock && idx === 0}
+                {/* Overlay gradient on hover */}
+                <motion.div 
+                  className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 rounded-lg md:rounded-xl"
+                  initial={{ opacity: 0 }}
+                  whileHover={{ opacity: 1 }}
+                />
+                
+                {/* Image with enhanced animations */}
+                <motion.div
+                  className="relative w-full h-full"
+                  initial={{ scale: 1.1, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ 
+                    duration: 0.8, 
+                    delay: idx * 0.15 + 0.2,
+                    ease: "easeOut"
+                  }}
+                >
+                  <Image
+                    src={imageSrc}
+                    alt={banner.title || ""}
+                    fill
+                    sizes="(max-width: 768px) 90vw, 450px"
+                    className="object-contain object-center transition-all duration-700 ease-out group-hover:scale-110 group-hover:brightness-110"
+                    unoptimized
+                    priority={isFirstBannerBlock && idx === 0}
+                  />
+                </motion.div>
+                
+                {/* Border glow effect on hover */}
+                <motion.div 
+                  className="absolute inset-0 border-2 border-transparent group-hover:border-white/30 rounded-lg md:rounded-xl transition-all duration-500 z-10"
+                  whileHover={{ borderColor: "rgba(255, 255, 255, 0.3)" }}
                 />
               </motion.a>
             );
@@ -303,7 +336,7 @@ export default function HomePageBlocks() {
                              href={`/product/${encodeURIComponent(product.sku)}`}
                               className="block bg-[#111] hover:bg-[#2b2a2a] overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 h-full"
                             >
-                              <div className="relative flex items-center justify-center overflow-hidden aspect-[1.3/1.5]">
+                              <div className="relative flex items-center justify-center overflow-hidden aspect-[125/116] md:aspect-[1.3/1.5]">
                                 {/* 🔹 Badge */}
                                 {badgeLabel && (
                                   <div
@@ -326,7 +359,7 @@ export default function HomePageBlocks() {
                                     fill
                                     className="object-contain p-3"
                                     loading="lazy"
-                                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 25vw"
                                     quality={85}
                                     unoptimized={typeof product.images[0] === "string" && product.images[0]?.startsWith('http')}
                                   />
