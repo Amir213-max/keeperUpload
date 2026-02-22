@@ -53,7 +53,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
             onClick={() => setShowAllFilters(true)}
             className="px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 border border-gray-600 shadow hover:shadow-md focus:outline-none  transition-all"
           >
-            {t("More Filters")} ({attributeValues.length - 4})
+            {t("More Filters")} {attributeValues.length - 4}
           </button>
         )}
         {showAllFilters && hasMoreFilters && (

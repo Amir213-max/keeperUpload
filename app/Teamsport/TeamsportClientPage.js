@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import BrandsSlider from "../Componants/brandsSplide_1";
 import FilterDropdown from "../Componants/CheckboxDropdown ";
 import ProductSlider from "../Componants/ProductSlider";
@@ -16,6 +16,7 @@ import { useCategory } from "../contexts/CategoryContext";
 import { useProductFilters } from "../hooks/useProductFilters";
 import PriceDisplay from "../components/PriceDisplay";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import ProgressBar from "../Componants/ProgressBar";
 
 export default function TeamsportClientPage ({ products, brands, attributeValues, rootCategory }) {
   const router = useRouter();
@@ -31,15 +32,19 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
   const productsPerPage = 20;
   const hasInitializedFromUrlRef = useRef(false);
 
+  // ✅ إضافة state لتتبع تحميل الصور
+  const [imagesLoading, setImagesLoading] = useState(false); // يبدأ بـ false، يصبح true فقط عند التحميل الأولي أو action من المستخدم
+  const [imageProgress, setImageProgress] = useState(0);
+  const [showProducts, setShowProducts] = useState(false); // إخفاء المنتجات حتى يكتمل التحميل
+  const loadedImagesRef = useRef(new Set());
+  const totalImagesRef = useRef(0);
+  const isInitialLoadRef = useRef(true); // لتتبع التحميل الأولي
+
   const { t, language } = useTranslation();
   const { loading: currencyLoading } = useCurrency();
   const isRTL = language === "ar"; // ✅ اتجاه الموقع
 
-  // 🔹 عمل refresh للصفحة عند الوصول إليها لاستدعاء البيانات من الـ API
-  useEffect(() => {
-    router.refresh();
-    console.log("✅ Refreshing Teamsport page to fetch fresh data");
-  }, []);
+  // 🔹 تم إزالة router.refresh() لمنع refresh تلقائي للصفحة
 
   // 🔹 جلب التصنيفات فقط (بدون منتجات)
   // IMPORTANT: Fetch only categories, not products. Fetching all products causes 503 errors.
@@ -141,6 +146,20 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
     }
   }, [brands, attributeValues, pathname, searchParams, setSelectedBrand, setSelectedAttributes]);
 
+  // ✅ بدء ProgressBar عند تغيير الفلاتر أو الصفحة (action من المستخدم)
+  useEffect(() => {
+    // تجاهل التحميل الأولي - سيتم التعامل معه في useEffect منفصل
+    if (isInitialLoadRef.current) {
+      return;
+    }
+    
+    // فقط عند action من المستخدم (فلترة أو تغيير صفحة)
+    setImagesLoading(true);
+    setImageProgress(0);
+    setShowProducts(false); // إخفاء المنتجات عند الفلترة
+    loadedImagesRef.current.clear();
+  }, [selectedBrand, selectedAttributes, selectedCategoryId, currentPage]);
+
   // 🔹 فلترة المنتجات حسب الفلاتر
   useEffect(() => {
     const result = products.filter((product) => {
@@ -195,6 +214,71 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
   const currentProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct);
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
 
+  // ✅ حساب عدد الصور الإجمالي وبدء التحميل الأولي
+  useEffect(() => {
+    const totalImages = currentProducts.reduce((count, product) => {
+      return count + (product.images?.length > 0 ? 1 : 0);
+    }, 0);
+    totalImagesRef.current = totalImages;
+    
+    // ✅ التحميل الأولي فقط
+    if (isInitialLoadRef.current && totalImages > 0) {
+      setImagesLoading(true);
+      setImageProgress(0);
+      setShowProducts(false); // إخفاء المنتجات حتى تحمل الصور
+      loadedImagesRef.current.clear();
+      isInitialLoadRef.current = false;
+      
+      // ✅ Fallback: إذا لم تحمل الصور خلال 3 ثوان، اعرض المنتجات
+      const fallbackTimeout = setTimeout(() => {
+        setImagesLoading(false);
+        setImageProgress(0);
+        setShowProducts(true);
+      }, 3000);
+      
+      return () => clearTimeout(fallbackTimeout);
+    } else if (totalImages === 0 && isInitialLoadRef.current) {
+      // إذا لم تكن هناك صور في التحميل الأولي، اعرض المنتجات مباشرة
+      setImagesLoading(false);
+      setImageProgress(0);
+      setShowProducts(true);
+      isInitialLoadRef.current = false;
+    }
+  }, [currentProducts]);
+
+  // ✅ معالج تحميل الصور
+  const handleImageLoad = useCallback((productId) => {
+    if (!loadedImagesRef.current.has(productId)) {
+      loadedImagesRef.current.add(productId);
+      const loadedCount = loadedImagesRef.current.size;
+      const totalImages = totalImagesRef.current;
+      
+      // ✅ حساب النسبة المئوية الفعلية
+      if (totalImages > 0) {
+        const progress = Math.min((loadedCount / totalImages) * 100, 95); // توقف عند 95% حتى تحمل كل شيء
+        setImageProgress(progress);
+      }
+      
+      // ✅ إذا تم تحميل جميع الصور، انتظر قليلاً ثم أكمل
+      if (loadedCount >= totalImages && totalImages > 0) {
+        // انتظر حتى تحمل الصفحة بالكامل
+        setTimeout(() => {
+          // استخدم requestAnimationFrame للتأكد من أن كل شيء تم تحميله
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              setImageProgress(100);
+              setTimeout(() => {
+                setImagesLoading(false);
+                setImageProgress(0);
+                setShowProducts(true); // عرض المنتجات بعد اكتمال التحميل
+              }, 300);
+            });
+          });
+        }, 200); // انتظر 200ms بعد تحميل آخر صورة
+      }
+    }
+  }, []);
+
   const getBadgeColor = (label) => {
     if (!label) return "bg-gray-400";
     if (label.toLowerCase().includes("new")) return "bg-green-500";
@@ -212,6 +296,11 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
 
   return (
     <div className={`bg-[#373e3e] ${isRTL ? "rtl" : "ltr"}`}>
+      {/* ✅ Progress Bar في أعلى الشاشة */}
+      <ProgressBar 
+        isLoading={imagesLoading && totalImagesRef.current > 0} 
+        progress={imageProgress}
+      />
       <div className="grid pt-1 grid-cols-1 lg:grid-cols-5">
         {/* Sidebar */}
         <div className="hidden lg:block lg:col-span-1 bg-black h-auto">
@@ -336,7 +425,11 @@ export default function TeamsportClientPage ({ products, brands, attributeValues
 
         {/* صورة المنتج */}
         <div className="flex justify-center items-center h-[220px]">
-          <ProductSlider images={product.images} productName={product.name} />
+          <ProductSlider 
+            images={product.images} 
+            productName={product.name}
+            onImageLoad={() => handleImageLoad(product.id || product.sku)}
+          />
         </div>
 
         {/* تفاصيل المنتج */}

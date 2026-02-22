@@ -204,8 +204,8 @@ export default function HomePageBlocks() {
                     block.content.banners.length === 1
                       ? "aspect-[125/116] sm:aspect-[2500/833]"
                       : isTwoBanners
-                      ? "aspect-[4/3] sm:aspect-[5/3]"
-                      : "aspect-[4/3] sm:aspect-[2500/833]"
+                           ? "aspect-[4/3] sm:aspect-[5/3]"
+                            : "aspect-[4/3] sm:aspect-[2500/833]"
                   }
                 `}
               >
@@ -270,16 +270,16 @@ export default function HomePageBlocks() {
                     duration: 0.8, 
                     delay: idx * 0.15 + 0.2,
                     ease: "easeOut"
-                  }}
-                >
-                  <Image
-                    src={imageSrc}
-                    alt={banner.title || ""}
-                    fill
-                    sizes="(max-width: 768px) 90vw, 450px"
+                }}
+              >
+                <Image
+                  src={imageSrc}
+                  alt={banner.title || ""}
+                  fill
+                  sizes="(max-width: 768px) 90vw, 450px"
                     className="object-contain object-center transition-all duration-700 ease-out group-hover:scale-110 group-hover:brightness-110"
-                    unoptimized
-                    priority={isFirstBannerBlock && idx === 0}
+                  unoptimized
+                  priority={isFirstBannerBlock && idx === 0}
                   />
                 </motion.div>
                 
@@ -359,8 +359,10 @@ export default function HomePageBlocks() {
                                     fill
                                     className="object-contain p-3"
                                     loading="lazy"
+                                    fetchPriority="auto"
                                     sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                                    quality={85}
+                                    quality={75}
+                                    placeholder="empty"
                                     unoptimized={typeof product.images[0] === "string" && product.images[0]?.startsWith('http')}
                                   />
                                 ) : (

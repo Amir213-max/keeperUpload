@@ -8,24 +8,16 @@ import 'swiper/css/navigation';
 import Image from 'next/image';
 import { useTranslation } from '../contexts/TranslationContext';
 
-export default function ProductSlider({ images, productName }) {
+export default function ProductSlider({ images, productName, onImageLoad }) {
   const { lang } = useTranslation();
   const [direction, setDirection] = useState('ltr');
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const swiperRef = useRef(null);
-  const loadTimeoutRef = useRef(null);
   const previousImagesRef = useRef(null);
 
   // 🔹 Memoize direction to prevent unnecessary re-renders
   useEffect(() => {
     setDirection(lang === 'ar' ? 'rtl' : 'ltr');
   }, [lang]);
-
-  // 🔹 Set mounted to true only on client side to prevent hydration mismatch
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // 🔹 Memoize showArrows to prevent recalculation
   const showArrows = useMemo(() => images?.length > 1, [images?.length]);
@@ -44,44 +36,17 @@ export default function ProductSlider({ images, productName }) {
   // 🔹 Memoize empty check
   const hasImages = useMemo(() => Array.isArray(images) && images.length > 0, [images]);
 
-
-  // 🔹 إعادة تعيين حالة التحميل عند تغيير الصور (فقط إذا تغيرت فعلياً)
+  // 🔹 إعادة تعيين عند تغيير الصور
   useEffect(() => {
-    // التحقق من أن الصور تغيرت فعلياً
     const currentImagesKey = images?.map(img => img).join(',') || '';
     const previousImagesKey = previousImagesRef.current || '';
     
-    // إذا كانت الصور نفسها، لا تفعل شيء
     if (currentImagesKey === previousImagesKey && previousImagesKey !== '') {
       return;
     }
 
-    // حفظ الصور الحالية للمقارنة المستقبلية
     previousImagesRef.current = currentImagesKey;
-
-    // تنظيف timeout السابق
-    if (loadTimeoutRef.current) {
-      clearTimeout(loadTimeoutRef.current);
-      loadTimeoutRef.current = null;
-    }
-
-    // إعادة تعيين الحالة - فقط عند تغيير الصور فعلياً
-    setImageLoaded(false);
-
-    // إضافة timeout احتياطي (3 ثواني كحد أقصى) لإخفاء الـ loader في حالة فشل التحميل
-    if (mounted && images?.[0]) {
-      loadTimeoutRef.current = setTimeout(() => {
-        setImageLoaded(true);
-      }, 3000);
-    }
-
-    return () => {
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-        loadTimeoutRef.current = null;
-      }
-    };
-  }, [images, mounted]);
+  }, [images]);
 
   if (!hasImages) {
     return (
@@ -103,18 +68,6 @@ export default function ProductSlider({ images, productName }) {
         }
       }}
     >
-      {/* 🔹 Professional Loader - يظهر أثناء تحميل الصورة (فقط على الـ client) */}
-      {mounted && !imageLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center  z-10">
-          <div className="relative w-16 h-16">
-            {/* Spinner Animation - حركة أبطأ */}
-            <div className="absolute inset-0 border-4 border-amber-400 border-t-transparent rounded-full loader-spin"></div>
-            {/* Pulse Effect */}
-            <div className="absolute inset-0 bg-amber-400 rounded-full animate-ping opacity-20"></div>
-          </div>
-        </div>
-      )}
-
       <Swiper
         onSwiper={(swiper) => (swiperRef.current = swiper)}
         key={direction}
@@ -137,54 +90,25 @@ export default function ProductSlider({ images, productName }) {
               alt={`${productName} image ${index + 1}`}
               width={400}
               height={220}
-              className={`w-full h-48 object-contain product-image-click cursor-pointer transition-opacity duration-300 ${
-                index === 0 && mounted && !imageLoaded ? 'opacity-0' : 'opacity-100'
-              }`}
+              className="w-full h-48 object-contain product-image-click cursor-pointer"
               draggable={false}
-              loading={index === 0 ? "eager" : "lazy"} // 🔹 Eager load first image, lazy load others
-              priority={index === 0} // 🔹 Priority for LCP image
-              quality={85} // 🔹 Optimize image quality
+              loading={index === 0 ? "eager" : "lazy"}
+              priority={index === 0}
+              fetchPriority={index === 0 ? "high" : "auto"}
+              quality={index === 0 ? 80 : 75}
               sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              unoptimized={img?.startsWith('http')} // 🔹 Handle external images
+              placeholder="empty"
+              unoptimized={img?.startsWith('http')}
               onLoad={() => {
-                // 🔹 عند تحميل الصورة الأولى، إخفاء الـ loader
-                if (index === 0) {
-                  // تنظيف timeout إذا كان موجوداً
-                  if (loadTimeoutRef.current) {
-                    clearTimeout(loadTimeoutRef.current);
-                    loadTimeoutRef.current = null;
-                  }
-                  
-                  // تأخير بسيط (200ms) لإظهار الـ loader حتى لو كانت الصورة سريعة التحميل
-                  setTimeout(() => {
-                    setImageLoaded(true);
-                  }, 200);
-                }
-              }}
-              onError={() => {
-                // 🔹 في حالة خطأ في تحميل الصورة، إخفاء الـ loader أيضاً
-                if (index === 0) {
-                  // تنظيف timeout إذا كان موجوداً
-                  if (loadTimeoutRef.current) {
-                    clearTimeout(loadTimeoutRef.current);
-                    loadTimeoutRef.current = null;
-                  }
-                  
-                  setImageLoaded(true);
+                // ✅ إشعار الـ parent component عند تحميل الصورة
+                if (index === 0 && onImageLoad) {
+                  onImageLoad();
                 }
               }}
               onLoadingComplete={() => {
-                // 🔹 طريقة إضافية للتحقق من اكتمال التحميل (Next.js Image) - الأكثر موثوقية
-                if (index === 0) {
-                  if (loadTimeoutRef.current) {
-                    clearTimeout(loadTimeoutRef.current);
-                    loadTimeoutRef.current = null;
-                  }
-                  
-                  // تأخير بسيط لضمان اكتمال التحميل
-                  setTimeout(() => {
-                    setImageLoaded(true);
-                  }, 100);
+                // ✅ إشعار الـ parent component عند اكتمال التحميل
+                if (index === 0 && onImageLoad) {
+                  onImageLoad();
                 }
               }}
             />
@@ -273,20 +197,6 @@ export default function ProductSlider({ images, productName }) {
         .product-swiper-container :global(.swiper-button-next),
         .product-swiper-container :global(.swiper-button-prev) {
           display: none !important;
-        }
-
-        /* 🔹 حركة الدوران البطيئة للـ loader */
-        .loader-spin {
-          animation: spin 1.5s linear infinite;
-        }
-
-        @keyframes spin {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
         }
       `}</style>
     </div>

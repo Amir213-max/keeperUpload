@@ -91,14 +91,30 @@ export function useProductFilters({
   }, [brands, attributeValues]);
 
   // Update selectedCategorySlug when selectedCategoryId changes
+  // 🔹 منع تحديث selectedCategorySlug على initial load إذا كان URL يحتوي على category slug
   useEffect(() => {
+    // 🔹 على initial load، لا نقوم بتحديث selectedCategorySlug إذا كان URL يحتوي على category slug
+    // لأن هذا قد يسبب refresh تلقائي
+    if (isInitialLoadRef.current) {
+      // 🔹 التحقق من أن URL يحتوي على category slug
+      const currentPathname = typeof window !== "undefined" ? window.location.pathname : pathname;
+      if (currentPathname && currentPathname.startsWith('/products/')) {
+        const pathWithoutBase = currentPathname.replace('/products/', '').split('?')[0];
+        const parts = pathWithoutBase.split('/').filter((p) => p);
+        if (parts.length > 0) {
+          // هناك category slug في URL، لا نقوم بتحديث selectedCategorySlug
+          return;
+        }
+      }
+    }
+    
     if (selectedCategoryId && categoriesWithProducts.length > 0) {
       const cat = categoriesWithProducts.find((c) => c.id === selectedCategoryId);
       setSelectedCategorySlug(cat?.slug || null);
     } else {
       setSelectedCategorySlug(null);
     }
-  }, [selectedCategoryId, categoriesWithProducts]);
+  }, [selectedCategoryId, categoriesWithProducts, isInitialLoadRef, pathname]);
 
   // Parse URL and update filters - ONLY on initial load or browser navigation
   useEffect(() => {
@@ -204,8 +220,12 @@ export function useProductFilters({
               setSelectedCategoryId(foundCategory.id);
             }
             // Also set category slug directly to ensure URL updates work correctly
-            if (foundCategory.slug !== selectedCategorySlug) {
-              setSelectedCategorySlug(foundCategory.slug);
+            // 🔹 على initial load، لا نقوم بتحديث selectedCategorySlug إذا كان URL يحتوي على category slug
+            // لأن هذا قد يسبب refresh تلقائي
+            if (!isInitial || foundCategory.slug !== selectedCategorySlug) {
+              if (foundCategory.slug !== selectedCategorySlug) {
+                setSelectedCategorySlug(foundCategory.slug);
+              }
             }
           }
         } else if (!categorySlug && selectedCategoryId && shouldParse) {

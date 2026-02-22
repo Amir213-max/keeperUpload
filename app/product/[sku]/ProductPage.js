@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from '@/app/contexts/TranslationContext';
 import Image from 'next/image';
@@ -17,6 +17,8 @@ export default function ProductPage({ product }) {
   const [zoomPosition, setZoomPosition] = useState({ x: 50, y: 50 });
 
   const imageContainerRef = useRef(null);
+  const rafRef = useRef(null);
+  const lastPositionRef = useRef({ x: 50, y: 50 });
 
   // ✅ Set default image
   useEffect(() => {
@@ -31,34 +33,79 @@ export default function ProductPage({ product }) {
     setSelectedIndex(index);
   };
 
-  const handleZoomMove = (x, y, width, height, left, top) => {
-    const newX = ((x - left) / width) * 100;
-    const newY = ((y - top) / height) * 100;
-    setZoomPosition({ x: newX, y: newY });
-  };
+  // ✅ استخدام requestAnimationFrame لتقليل التحديثات
+  const updateZoomPosition = useCallback((newX, newY) => {
+    // التحقق من أن القيمة تغيرت فعلياً لتجنب التحديثات غير الضرورية
+    const threshold = 0.5; // الحد الأدنى للتغيير
+    const xDiff = Math.abs(newX - lastPositionRef.current.x);
+    const yDiff = Math.abs(newY - lastPositionRef.current.y);
+    
+    if (xDiff < threshold && yDiff < threshold) {
+      return; // لا تحديث إذا كان التغيير صغير جداً
+    }
 
-  const handleMouseMove = (e) => {
+    lastPositionRef.current = { x: newX, y: newY };
+
+    // إلغاء الـ requestAnimationFrame السابق إذا كان موجوداً
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+    }
+
+    // استخدام requestAnimationFrame لتحديث smooth
+    rafRef.current = requestAnimationFrame(() => {
+    setZoomPosition({ x: newX, y: newY });
+    });
+  }, []);
+
+  const handleZoomMove = useCallback((x, y, width, height, left, top) => {
+    const newX = Math.max(0, Math.min(100, ((x - left) / width) * 100));
+    const newY = Math.max(0, Math.min(100, ((y - top) / height) * 100));
+    updateZoomPosition(newX, newY);
+  }, [updateZoomPosition]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (!isZoomed || !imageContainerRef.current) return;
+    
     const { left, top, width, height } =
       imageContainerRef.current.getBoundingClientRect();
     handleZoomMove(e.pageX, e.pageY, width, height, left, top);
-  };
+  }, [isZoomed, handleZoomMove]);
 
   // ✅ دعم الزووم باللمس (Touch Zoom)
-  const handleTouchMove = (e) => {
+  const handleTouchMove = useCallback((e) => {
+    if (!isZoomed || !imageContainerRef.current) return;
+    
+    e.preventDefault(); // منع scroll أثناء الزووم
     const touch = e.touches[0];
+    if (!touch) return;
+    
     const { left, top, width, height } =
       imageContainerRef.current.getBoundingClientRect();
     handleZoomMove(touch.pageX, touch.pageY, width, height, left, top);
-  };
+  }, [isZoomed, handleZoomMove]);
 
-  const handleTouchStart = (e) => {
+  const handleTouchStart = useCallback((e) => {
     setIsZoomed(true);
-    handleTouchMove(e); // عشان الزووم يبدأ من أول لمسة
-  };
+    if (e.touches[0] && imageContainerRef.current) {
+      const touch = e.touches[0];
+      const { left, top, width, height } =
+        imageContainerRef.current.getBoundingClientRect();
+      handleZoomMove(touch.pageX, touch.pageY, width, height, left, top);
+    }
+  }, [handleZoomMove]);
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = useCallback(() => {
     setIsZoomed(false);
-  };
+  }, []);
+
+  // ✅ تنظيف requestAnimationFrame عند unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="bg-white">

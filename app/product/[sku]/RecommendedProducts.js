@@ -180,8 +180,10 @@ export default function RecommendedSlider({ productId }) {
                                 fill
                                 className="object-contain pt-6"
                                 loading="lazy"
+                                fetchPriority="auto"
                                 sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                                quality={85}
+                                quality={75}
+                                placeholder="empty"
                                 unoptimized={item.images[0]?.startsWith('http')}
                               />
                             ) : (

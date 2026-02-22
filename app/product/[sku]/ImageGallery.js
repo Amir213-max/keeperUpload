@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Splide, SplideSlide } from '@splidejs/react-splide';
 import '@splidejs/react-splide/css';
+import Image from 'next/image';
 
 export default function ImageGallery({
   images,
@@ -61,11 +62,18 @@ export default function ImageGallery({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: index * 0.1 }}
               >
-                <img
+                <Image
                   src={img}
                   alt={`${productName} - Image ${index + 1}`}
-                  className="w-full h-full object-cover  group-hover:scale-105 transition-transform duration-300"
-                  style={{ maxWidth: '90%', maxHeight: '90%', margin: 'auto' }} // 👈 تصغير الصورة نفسها
+                  width={120}
+                  height={120}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  style={{ maxWidth: '90%', maxHeight: '90%', margin: 'auto' }}
+                  loading={index < 3 ? "eager" : "lazy"}
+                  quality={75}
+                  sizes="(max-width: 768px) 20vw, 120px"
+                  placeholder="empty"
+                  unoptimized={img?.startsWith('http')}
                 />
               </motion.button>
             </SplideSlide>
@@ -112,11 +120,18 @@ export default function ImageGallery({
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.3, delay: index * 0.1 }}
             >
-              <img
+              <Image
                 src={img}
                 alt={`${productName} - Image ${index + 1}`}
-                className="w-full h-full object-cover  group-hover:scale-105 transition-transform duration-300"
-                style={{ maxWidth: '85%', maxHeight: '85%', margin: 'auto' }} // 👈 تصغير الصورة نفسها
+                width={120}
+                height={120}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                style={{ maxWidth: '85%', maxHeight: '85%', margin: 'auto' }}
+                loading={index < 3 ? "eager" : "lazy"}
+                quality={75}
+                sizes="(max-width: 640px) 20vw, 120px"
+                placeholder="empty"
+                unoptimized={img?.startsWith('http')}
               />
             </motion.button>
           </SplideSlide>
