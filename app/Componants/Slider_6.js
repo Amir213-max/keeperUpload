@@ -13,7 +13,6 @@ const GET_BRANDS = gql`
   query {
     brands {
       id
-      name
       logo
     }
   }
@@ -76,25 +75,15 @@ export default function MultiSlider_6() {
 >
 
         {brands.length > 0 ? (
-          brands.map((brand, index) => {
-            // ✅ استخدام اسم البراند في الـ URL بدلاً من ID
-            const brandName = brand?.name ? String(brand.name).trim() : null;
-            const brandId = brand?.id ? String(brand.id).trim() : null;
-            
-            if (!brandName || !brandId) {
-              console.warn('Brand missing name or ID:', brand);
-              return null;
-            }
-            
-            return (
-              <SplideSlide key={brandId || index}>
-                <Link href={`/brands/${encodeURIComponent(brandName)}`}>
+          brands.map((brand, index) => (
+            <SplideSlide key={index}>
+              <Link href={`/brands/${brand.id}`}>
                 <div className="  shadow-md overflow-hidden w-full flex flex-col h-32 cursor-pointer hover:scale-105 transition-transform duration-300 bg-black">
                   <div className="relative w-full h-full flex items-center justify-center p-6">
                     <Image
                       loader={customLoader} // ✅ استخدم الـ Loader هنا
                       src={brand.logo}
-                        alt={brandName}
+                      alt={brand.id}
                       fill
                       className="object-contain"
                     />
@@ -102,8 +91,7 @@ export default function MultiSlider_6() {
                 </div>
               </Link>
             </SplideSlide>
-            );
-          })
+          ))
         ) : (
           <p className="text-center text-white">Loading brands...</p>
         )}

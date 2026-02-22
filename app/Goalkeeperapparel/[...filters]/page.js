@@ -54,7 +54,7 @@ export default async function Page({ params }) {
     values: Array.from(values),
   }));
 
-  const brands = [...new Set(products.map((p) => p.brand?.name).filter(Boolean))];
+  const brands = [...new Set(products.map((p) => p.brand_name).filter(Boolean))];
 
   return (
     <Suspense fallback={<Loader />}>

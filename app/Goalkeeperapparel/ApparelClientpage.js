@@ -164,10 +164,10 @@ useEffect(() => {
       if (selectedAttributes["Brand"] && selectedAttributes["Brand"].length > 0) {
         // Multiple brands selected as attribute
         const selectedBrands = selectedAttributes["Brand"].map((b) => String(b).toLowerCase().trim());
-        brandMatch = product.brand?.name && selectedBrands.includes(String(product.brand.name).toLowerCase().trim());
+        brandMatch = product.brand_name && selectedBrands.includes(String(product.brand_name).toLowerCase().trim());
       } else if (selectedBrand) {
         // Single brand selected
-        brandMatch = product.brand?.name === selectedBrand;
+        brandMatch = product.brand_name === selectedBrand;
       }
 
       const attrs = product.productAttributeValues || [];
@@ -296,7 +296,7 @@ useEffect(() => {
 
         
 
-          {!selectedCategoryId && brands && brands.length > 0 && (
+          {!selectedCategoryId && !selectedBrand && brands && brands.length > 0 && (
             <BrandsSlider
               brands={brands}
               selectedBrand={selectedBrand}
@@ -364,7 +364,7 @@ useEffect(() => {
         {/* تفاصيل المنتج */}
         <div className="p-4 flex flex-col flex-grow justify-between">
           <h3 className="text-base text-gray-700 text-center font-bold mb-1">
-            <DynamicText>{product.brand?.name || ''}</DynamicText>
+            <DynamicText>{product.brand_name || ''}</DynamicText>
           </h3>
 
           <p className="text-center text-sm text-gray-500 line-clamp-2 mb-3">

@@ -54,7 +54,7 @@ export default async function Home() {
               <h3 className="text-lg text-center font-semibold mb-1">
                 {edge.node.name}
               </h3>
-              <p className="text-center text-sm">{edge.node.brand?.name}</p>
+              <p className="text-center text-sm">{edge.node.brand_name}</p>
               <h2 className="font-bold text-2xl mt-4 flex justify-center line-clamp-1">
                 $98 <span className="text-xs ml-1">99</span>
               </h2>

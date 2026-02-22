@@ -355,9 +355,9 @@ export default function ProfilePage() {
                       <h3 className="font-semibold text-gray-900 text-sm md:text-base mb-1">
                         <DynamicText>{item.product?.name || t("Products")}</DynamicText>
                       </h3>
-                      {item.product?.brand?.name && (
+                      {item.product?.brand_name && (
                         <p className="text-xs md:text-sm text-gray-500 mb-1">
-                          <DynamicText>{item.product.brand.name}</DynamicText>
+                          <DynamicText>{item.product.brand_name}</DynamicText>
                         </p>
                       )}
                       <p className="text-xs md:text-sm text-gray-600">

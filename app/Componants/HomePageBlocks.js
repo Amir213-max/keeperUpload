@@ -369,9 +369,9 @@ export default function HomePageBlocks() {
                               </div>
 {/* 🔹 Product Info */}
 <div className="p-4 text-center overflow-hidden flex flex-col justify-between">
-  {product.brand?.name && (
+  {product.brand_name && (
     <p className="text-gray-300 text-sm mb-1">
-      <DynamicText>{product.brand.name}</DynamicText>
+      <DynamicText>{product.brand_name}</DynamicText>
     </p>
   )}
 

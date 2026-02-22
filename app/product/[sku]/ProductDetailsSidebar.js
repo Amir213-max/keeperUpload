@@ -171,6 +171,50 @@ const addToCart = async () => {
   const finalPriceFormatted = currencyLoading ? "..." : formatPrice(finalPrice);
   const hasDiscount = !!discountMatch;
 
+  // 📦 حساب المخزون من الـ variants.stock
+  let totalStockQty = null;
+  let minStockQty = null;
+  let maxStockQty = null;
+
+  if (Array.isArray(product.variants) && product.variants.length > 0) {
+    let qtySum = 0;
+    let foundQty = false;
+    let minVal = Number.POSITIVE_INFINITY;
+    let maxVal = Number.NEGATIVE_INFINITY;
+
+    product.variants.forEach((variant) => {
+      const stock = variant?.stock || {};
+      const qty = typeof stock.qty === "number" ? stock.qty : null;
+      const minQty = typeof stock.minQty === "number" ? stock.minQty : null;
+      const maxQty = typeof stock.maxQty === "number" ? stock.maxQty : null;
+
+      if (qty !== null) {
+        qtySum += qty;
+        foundQty = true;
+      }
+
+      if (minQty !== null) {
+        minVal = Math.min(minVal, minQty);
+      }
+
+      if (maxQty !== null) {
+        maxVal = Math.max(maxVal, maxQty);
+      }
+    });
+
+    if (foundQty) {
+      totalStockQty = qtySum;
+    }
+
+    if (minVal !== Number.POSITIVE_INFINITY) {
+      minStockQty = minVal;
+    }
+
+    if (maxVal !== Number.NEGATIVE_INFINITY) {
+      maxStockQty = maxVal;
+    }
+  }
+
 
   // ✅ عند تسجيل الدخول بنقل الكارت الجيست إلى السيرفر
 useEffect(() => {
@@ -211,18 +255,18 @@ useEffect(() => {
       "
     >
       {/* ✅ Brand Section */}
-      {product.brand?.name && (
+      {product.brand_name && (
         <div className="flex items-center gap-3">
           <div className="w-2 h-2  rotate-45" />
           <div className="relative w-16 h-8 sm:w-20 sm:h-10 flex items-center justify-center">
             <img
-              src={product.brand.logo}
-              alt={product.brand.name}
+              src={product.brand_logo_url}
+              alt={product.brand_name}
               className="w-full h-full object-contain"
             />
           </div>
           <span className="text-sm font-semibold text-gray-700 uppercase">
-            <DynamicText>{product.brand.name}</DynamicText>
+            <DynamicText>{product.brand_name}</DynamicText>
           </span>
         </div>
       )}
@@ -348,6 +392,28 @@ useEffect(() => {
             )}
           </AnimatePresence>
         </div>
+
+        {/* 📦 Stock info (from variants.stock) */}
+        {(totalStockQty !== null || minStockQty !== null || maxStockQty !== null) && (
+          <p className="text-xs font-semibold text-green-600 mt-1">
+            {totalStockQty !== null && (
+              <span>
+                Available: <span>{totalStockQty}</span>
+              </span>
+            )}
+            {minStockQty !== null && (
+              <span>
+                {totalStockQty !== null && " · "}Min: <span>{minStockQty}</span>
+              </span>
+            )}
+            {maxStockQty !== null && (
+              <span>
+                {(totalStockQty !== null || minStockQty !== null) && " · "}Max:{" "}
+                <span>{maxStockQty}</span>
+              </span>
+            )}
+          </p>
+        )}
       </div>
 
       {/* ✅ Buttons Section */}

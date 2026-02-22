@@ -45,7 +45,7 @@
 //   }));
 
 //   // 🟢 تجهيز الـ Brands
-//   const brands = [...new Set(products.map((p) => p.brand?.name).filter(Boolean))];
+//   const brands = [...new Set(products.map((p) => p.brand_name).filter(Boolean))];
 
 //   return (
 //     <Suspense fallback={<Loader />}>
@@ -137,7 +137,7 @@ export default async function Page() {
   }));
 
   // 🟢 تجهيز الـ Brands
-  const brands = [...new Set(products.map((p) => p.brand?.name).filter(Boolean))];
+  const brands = [...new Set(products.map((p) => p.brand_name).filter(Boolean))];
 
   return (
     <Suspense fallback={<Loader />}>

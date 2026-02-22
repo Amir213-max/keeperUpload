@@ -139,10 +139,8 @@ query ProductsByCategory($categoryId: ID!) {
         label
         color
       }
-      brand {
-      id
-      name
-      }
+      brand_name
+      brand_logo_url
       rootCategories {
         id
         name
@@ -177,10 +175,8 @@ query ProductsByCategory($categoryId: ID!) {
           label
           color
         }
-        brand {
-          id
-          name
-        }
+        brand_name
+        brand_logo_url
         rootCategories {
           id
           name
@@ -588,6 +584,12 @@ export const GET_PRODUCT_BY_SKU = gql`
       
       images
       variants {
+      stock{
+          qty
+          maxQty
+          minQty
+          
+        }
         id
         name
         price
@@ -986,11 +988,30 @@ export const PRODUCTS_BY_BRAND_QUERY = gql`
       brand_logo_url
       is_online
       published
+      created_at
+      updated_at
+      productBadges {
+        label
+        color
+      }
       productAttributeValues {
+        id
         key
         attribute {
+          id
           label
+          key
         }
+      }
+      variants {
+        id
+        name
+        price
+        size
+      }
+      rootCategories {
+        id
+        name
       }
     }
   }

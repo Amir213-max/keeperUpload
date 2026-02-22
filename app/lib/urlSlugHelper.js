@@ -414,6 +414,8 @@ export function parsePathSegments(pathSegments = [], attributeValues = [], brand
       let brandName = null;
       if (typeof brand === 'string') {
         brandName = brand;
+      } else if (brand && brand.brand_name) {
+        brandName = brand.brand_name;
       } else if (brand && brand.name) {
         brandName = brand.name;
       }
@@ -543,6 +545,8 @@ export function parseBrandFromPathSegments(pathSegments = [], brands = [], attri
       let brandName = null;
       if (typeof brand === 'string') {
         brandName = brand;
+      } else if (brand && brand.brand_name) {
+        brandName = brand.brand_name;
       } else if (brand && brand.name) {
         brandName = brand.name;
       }

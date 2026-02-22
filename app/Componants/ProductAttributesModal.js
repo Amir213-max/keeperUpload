@@ -244,17 +244,17 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                       {/* Product Details */}
                       <div className="space-y-4">
                         {/* Brand */}
-                        {product.brand?.name && (
+                        {product.brand_name && (
                           <div className="flex items-center gap-2">
-                            {product.brand.logo && (
+                            {product.brand_logo_url && (
                               <img
-                                src={product.brand.logo}
-                                alt={product.brand.name}
+                                src={product.brand_logo_url}
+                                alt={product.brand_name}
                                 className="w-12 h-6 object-contain"
                               />
                             )}
                             <span className="text-sm font-semibold text-gray-700 uppercase">
-                              {product.brand.name}
+                              {product.brand_name}
                             </span>
                           </div>
                         )}

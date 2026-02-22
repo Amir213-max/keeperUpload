@@ -106,7 +106,7 @@ export default function ProductsPageLayout({
   // 🔹 فلترة المنتجات حسب الفلاتر
   useEffect(() => {
     const result = products.filter((product) => {
-      const brandMatch = !selectedBrand || product.brand?.name === selectedBrand;
+      const brandMatch = !selectedBrand || product.brand_name === selectedBrand;
 
       const attrs = product.productAttributeValues || [];
       const attributesMatch = Object.entries(selectedAttributes).every(
@@ -294,7 +294,7 @@ export default function ProductsPageLayout({
                   </div>
 
                   <h3 className="text-base text-gray-700 text-center font-bold mb-1">
-                    <DynamicText>{product.brand?.name || ''}</DynamicText>
+                    <DynamicText>{product.brand_name || ''}</DynamicText>
                   </h3>
 
                   <p className="text-center text-sm text-gray-500 line-clamp-2 mb-3">

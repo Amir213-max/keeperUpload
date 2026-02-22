@@ -82,7 +82,7 @@ export default function WishlistPage() {
 
               <div className="p-4">
                 <h3 className="text-lg font-semibold text-gray-700">
-                  {product.brand?.name}
+                  {product.brand_name}
                 </h3>
                 <p className="text-sm text-gray-500 mb-2">{product.name}</p>
 

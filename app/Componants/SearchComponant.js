@@ -279,9 +279,9 @@ export default function SearchComponent({ onClose }) {
                         <DynamicText>{product.name}</DynamicText>
                       </p>
                       <p className="text-xs text-gray-100">SKU: {product.sku}</p>
-                      {product.brand?.name && (
+                      {product.brand_name && (
                         <p className="text-xs text-gray-200">
-                          <DynamicText>{product.brand.name}</DynamicText>
+                          <DynamicText>{product.brand_name}</DynamicText>
                         </p>
                       )}
                     </div>

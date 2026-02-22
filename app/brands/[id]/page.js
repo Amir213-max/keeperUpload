@@ -67,45 +67,57 @@ const [currencyRate, setCurrencyRate] = useState(null);
         // ✅ معالجة نتائج المنتجات - تحويل البيانات من الـ query الجديد
         if (productsData.status === "fulfilled") {
           const rawProducts = productsData.value?.productsByBrand || [];
+          console.log(`✅ Fetched ${rawProducts.length} products for brand ID: ${brandId}`, rawProducts);
           
           // ✅ تحويل البيانات إلى الشكل المطلوب
-          const products = rawProducts.map((p) => ({
-            id: p.id,
-            name: p.name,
-            sku: p.sku,
-            url: p.url,
-            list_price_amount: p.list_price_amount || 0,
-            price_range_exact_amount: p.price_range_exact_amount || p.list_price_amount || 0,
-            price_range_from: p.price_range_from,
-            price_range_to: p.price_range_to,
-            price_range_currency: p.price_range_currency,
-            offer_price_amount: p.offer_price_amount,
-            offer_discount_percentage: p.offer_discount_percentage,
-            images: Array.isArray(p.images) ? p.images : (p.images ? [p.images] : []),
-            number_of_images: p.number_of_images,
-            brand: {
-              id: p.brand_name ? brandId : null,
-              name: p.brand_name || '',
-            },
-            brand_name: p.brand_name,
-            brand_logo_url: p.brand_logo_url,
-            is_online: p.is_online,
-            published: p.published,
-            productAttributeValues: p.productAttributeValues || [],
-            variants: p.variants || [],
-            // ✅ حساب productBadges من offer_discount_percentage
-            productBadges: p.offer_discount_percentage 
-              ? [{ label: `${p.offer_discount_percentage}%`, color: '#888' }]
-              : [],
-          }));
+          const products = rawProducts.map((p) => {
+            // ✅ استخدام productBadges من API إذا كان موجوداً، وإلا استخدام offer_discount_percentage
+            let productBadges = p.productBadges || [];
+            if (productBadges.length === 0 && p.offer_discount_percentage) {
+              productBadges = [{ label: `${p.offer_discount_percentage}%`, color: '#888' }];
+            }
+            
+            return {
+              id: p.id,
+              name: p.name,
+              sku: p.sku,
+              url: p.url,
+              list_price_amount: p.list_price_amount || 0,
+              price_range_exact_amount: p.price_range_exact_amount || p.list_price_amount || 0,
+              price_range_from: p.price_range_from,
+              price_range_to: p.price_range_to,
+              price_range_currency: p.price_range_currency,
+              offer_price_amount: p.offer_price_amount,
+              offer_discount_percentage: p.offer_discount_percentage,
+              images: Array.isArray(p.images) ? p.images : (p.images ? [p.images] : []),
+              number_of_images: p.number_of_images,
+              brand: {
+                id: p.brand_name ? brandId : null,
+                name: p.brand_name || '',
+              },
+              brand_name: p.brand_name,
+              brand_logo_url: p.brand_logo_url,
+              is_online: p.is_online,
+              published: p.published,
+              created_at: p.created_at,
+              updated_at: p.updated_at,
+              productAttributeValues: p.productAttributeValues || [],
+              variants: p.variants || [],
+              productBadges: productBadges,
+              rootCategories: p.rootCategories || [],
+            };
+          });
           
           setProducts(products);
           setFilteredProducts(products);
           if (products.length === 0) {
-            console.warn(`No products found for brand ID: ${brandId}`);
+            console.warn(`⚠️ No products found for brand ID: ${brandId}. Check if the brand ID is correct and the brand has products.`);
+          } else {
+            console.log(`✅ Successfully processed ${products.length} products for brand ID: ${brandId}`);
           }
         } else {
-          console.error("Error fetching products:", productsData.reason);
+          console.error("❌ Error fetching products:", productsData.reason);
+          console.error("Brand ID used:", brandId);
           setProducts([]);
           setFilteredProducts([]);
         }
@@ -299,7 +311,7 @@ const [currencyRate, setCurrencyRate] = useState(null);
         {/* تفاصيل المنتج */}
         <div className="p-4 flex flex-col flex-grow justify-between">
           <h3 className="text-base text-gray-700 text-center font-bold mb-1">
-            <DynamicText>{product.brand?.name || ''}</DynamicText>
+            <DynamicText>{product.brand_name || ''}</DynamicText>
           </h3>
 
           <p className="text-center text-sm text-gray-500 line-clamp-2 mb-3">
