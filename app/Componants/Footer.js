@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { FaFacebook, FaInstagram, FaYoutube, FaTiktok, FaWhatsapp, FaSnapchat } from 'react-icons/fa';
+import { FaFacebook, FaInstagram, FaYoutube, FaTiktok, FaWhatsapp } from 'react-icons/fa';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import DynamicText from '../components/DynamicText';
@@ -123,7 +123,6 @@ export default function Footer() {
     if (lower.includes('youtube')) return <FaYoutube />;
     if (lower.includes('tiktok')) return <FaTiktok />;
     if (lower.includes('whatsapp')) return <FaWhatsapp />;
-    if (lower.includes('snapchat')) return <FaSnapchat />;
     return null;
   };
 
@@ -184,14 +183,14 @@ export default function Footer() {
       <hr className="border-gray-700" />
 
       {/* Social media (dynamically from API) */}
-      <div className={`flex justify-center gap-6 py-8 text-2xl ${lang === 'ar' ? 'flex-row-reverse' : ''}`}>
+      <div className="flex justify-center gap-6 py-8 text-2xl">
         {socialLinks.map((item, i) => (
           <a
             key={i}
             href={item.value}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-amber-400 transition-transform transform hover:scale-125 flex-shrink-0"
+            className="hover:text-amber-400 transition-transform transform hover:scale-125"
             aria-label={`Visit our ${item.key} page`}
           >
             {getSocialIcon(item.key)}

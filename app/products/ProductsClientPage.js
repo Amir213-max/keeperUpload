@@ -33,6 +33,7 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
   });
   const productsPerPage = 30;
   const hasInitializedFromUrlRef = useRef(false);
+  const lastParsedFiltersRef = useRef(null); // Track last parsed filters to prevent re-parsing
   const { loading: currencyLoading } = useCurrency();
   const { t, language } = useTranslation();
 
@@ -83,37 +84,77 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     disableUrlUpdates: false, // Let hook handle URL updates automatically (like main pages)
   });
 
+  // Create refs for selectedBrand and selectedAttributes to use in comparisons
+  const selectedBrandRef = useRef(selectedBrand);
+  const selectedAttributesRef = useRef(selectedAttributes);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    selectedBrandRef.current = selectedBrand;
+    selectedAttributesRef.current = selectedAttributes;
+  }, [selectedBrand, selectedAttributes]);
+
   // 🔹 Initialize filters from URL on mount (for direct access/refresh)
   // This ensures filters are applied when opening a filtered URL directly
   // This is especially important for subcategory pages from sidebar
   // Priority: 1) initialFilters from server params, 2) parse from URL pathname
   // This runs synchronously to ensure filters are applied BEFORE rendering
+  // 🔹 IMPORTANT: This runs BEFORE hook's parsing to ensure initialFilters have priority
   useEffect(() => {
-    // Only run once on initial mount, after data is ready
-    if (hasInitializedFromUrlRef.current) return;
-    
-    // Wait for data to be ready - we need brands and attributeValues to parse filters correctly
-    if (!brands.length || !attributeValues.length) {
-      return; // Wait for data to be ready
-    }
-    
-    // Mark as initialized immediately to prevent re-running
-    hasInitializedFromUrlRef.current = true;
-    
-    // Priority 1: Use initialFilters from server component params if available
+    // 🔹 Priority 1: Use initialFilters from server component params if available
     // This handles prefixed segments like: brand-nike, color-white, color-gold
     // Example URL: /products/goalkeeper-jerseys/color-white/color-gold/brand-nike
     // → initialFilters: ["color-white", "color-gold", "brand-nike"]
     const hasInitialFilters = initialFilters && Array.isArray(initialFilters) && initialFilters.length > 0;
+    
+    // 🔹 إذا كان هناك initialFilters، نطبقها فوراً حتى لو البيانات غير جاهزة
+    // لأنها تأتي من server component وهي صحيحة
     if (hasInitialFilters) {
+      // Wait for data to be ready - we need brands and attributeValues to parse filters correctly
+      if (!brands.length || !attributeValues.length) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔹 ProductsClientPage: initialFilters found but data not ready, will retry');
+        }
+        // سنحاول مرة أخرى عند وصول البيانات
+        return;
+      }
+      
+      // Create a unique key for current filters to prevent re-parsing
+      const filtersKey = JSON.stringify({
+        initialFilters: initialFilters || [],
+        pathname,
+        brandsLength: brands.length,
+        attributeValuesLength: attributeValues.length
+      });
+      
+      // Skip if we've already parsed these exact filters
+      if (lastParsedFiltersRef.current === filtersKey) {
+        return;
+      }
+      
+      // Mark as initialized after successful parsing
+      if (!hasInitializedFromUrlRef.current) {
+        hasInitializedFromUrlRef.current = true;
+      }
+      
+      // Mark as parsed
+      lastParsedFiltersRef.current = filtersKey;
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔹 ProductsClientPage: Applying initialFilters with priority:', initialFilters);
+      }
+      
       // Decode URL-encoded segments
       const pathSegments = initialFilters.map(segment => decodeURIComponent(segment));
       
       // Parse brand from path segments (handles both "brand-nike" and "nike" formats)
       if (pathSegments.length > 0) {
         const parsedBrand = parseBrandFromPathSegments(pathSegments, brands, attributeValues);
-        if (parsedBrand) {
+        if (parsedBrand && parsedBrand !== selectedBrandRef.current) {
           // Apply brand filter immediately
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 ProductsClientPage: Parsing brand from initialFilters:', parsedBrand);
+          }
           setSelectedBrand(parsedBrand);
         }
       }
@@ -124,43 +165,85 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
       if (pathSegments.length > 0) {
         const parsedAttrs = parsePathSegments(pathSegments, attributeValues, brands);
         if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
-          // Apply attribute filters immediately
-          setSelectedAttributes(parsedAttrs);
+          const currentAttrsStr = JSON.stringify(selectedAttributesRef.current);
+          const newAttrsStr = JSON.stringify(parsedAttrs);
+          if (currentAttrsStr !== newAttrsStr) {
+            // Apply attribute filters immediately
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔹 ProductsClientPage: Parsing attributes from initialFilters:', parsedAttrs);
+            }
+            setSelectedAttributes(parsedAttrs);
+          }
         }
       }
       
-      // Debug: Log applied filters
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔹 Applied filters from initialFilters:', {
-          pathSegments,
-          parsedBrand: parseBrandFromPathSegments(pathSegments, brands, attributeValues),
-          parsedAttrs: parsePathSegments(pathSegments, attributeValues, brands),
-        });
+      // 🔹 بعد تطبيق initialFilters، لا نحتاج للـ fallback parsing
+      // لأن initialFilters هي المصدر الصحيح للفلاتر
+      return;
+    }
+    
+    // Priority 2: Fallback to parsing from URL pathname (for client-side navigation)
+    // فقط إذا لم يكن هناك initialFilters
+    // Wait for data to be ready - we need brands and attributeValues to parse filters correctly
+    if (!brands.length || !attributeValues.length) {
+      if (!hasInitializedFromUrlRef.current) {
+        return; // Wait for data to be ready on first attempt
       }
-    } else {
-      // Priority 2: Fallback to parsing from URL pathname (for client-side navigation)
-      const currentPath = typeof window !== "undefined" ? window.location.pathname : pathname;
-      if (currentPath && currentPath.startsWith('/products/') && brands.length > 0 && attributeValues.length > 0) {
-        // Parse /products/[category-slug]/[filters] structure
-        const pathWithoutBase = currentPath.replace('/products/', '').split('?')[0];
-        const parts = pathWithoutBase.split('/').filter((p) => p);
+      return;
+    }
+    
+    // Create a unique key for current filters to prevent re-parsing
+    const filtersKey = JSON.stringify({
+      initialFilters: initialFilters || [],
+      pathname,
+      brandsLength: brands.length,
+      attributeValuesLength: attributeValues.length
+    });
+    
+    // Skip if we've already parsed these exact filters
+    if (lastParsedFiltersRef.current === filtersKey) {
+      return;
+    }
+    
+    // Mark as initialized after successful parsing
+    if (!hasInitializedFromUrlRef.current) {
+      hasInitializedFromUrlRef.current = true;
+    }
+    
+    // Mark as parsed
+    lastParsedFiltersRef.current = filtersKey;
+    
+    const currentPath = typeof window !== "undefined" ? window.location.pathname : pathname;
+    if (currentPath && currentPath.startsWith('/products/')) {
+      // Parse /products/[category-slug]/[filters] structure
+      const pathWithoutBase = currentPath.replace('/products/', '').split('?')[0];
+      const parts = pathWithoutBase.split('/').filter((p) => p);
+      
+      if (parts.length > 1) {
+        // First part is category slug, rest are filter segments
+        const pathSegments = parts.slice(1);
         
-        if (parts.length > 1) {
-          // First part is category slug, rest are filter segments
-          const pathSegments = parts.slice(1);
-          
-          // Parse brand from path segments
-          if (pathSegments.length > 0) {
-            const parsedBrand = parseBrandFromPathSegments(pathSegments, brands, attributeValues);
-            if (parsedBrand) {
-              setSelectedBrand(parsedBrand);
+        // Parse brand from path segments
+        if (pathSegments.length > 0) {
+          const parsedBrand = parseBrandFromPathSegments(pathSegments, brands, attributeValues);
+          if (parsedBrand && parsedBrand !== selectedBrandRef.current) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔹 ProductsClientPage: Parsing brand from URL pathname:', parsedBrand);
             }
+            setSelectedBrand(parsedBrand);
           }
-          
-          // Parse attributes from path segments
-          if (pathSegments.length > 0) {
-            const parsedAttrs = parsePathSegments(pathSegments, attributeValues, brands);
-            if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
+        }
+        
+        // Parse attributes from path segments
+        if (pathSegments.length > 0) {
+          const parsedAttrs = parsePathSegments(pathSegments, attributeValues, brands);
+          if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
+            const currentAttrsStr = JSON.stringify(selectedAttributesRef.current);
+            const newAttrsStr = JSON.stringify(parsedAttrs);
+            if (currentAttrsStr !== newAttrsStr) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('🔹 ProductsClientPage: Parsing attributes from URL pathname:', parsedAttrs);
+              }
               setSelectedAttributes(parsedAttrs);
             }
           }
@@ -173,45 +256,13 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
       const brandSlug = searchParams.get("brand");
       if (brandSlug) {
         const brandName = fromSlug(brandSlug);
-        if (brandName) {
+        if (brandName && brandName !== selectedBrandRef.current) {
           setSelectedBrand(brandName);
         }
       }
     }
-  }, [brands, attributeValues, pathname, searchParams, setSelectedBrand, setSelectedAttributes, initialFilters]);
+  }, [brands, attributeValues, pathname, searchParams, initialFilters]);
 
-  // 🔹 Re-initialize filters if data becomes available after initial attempt
-  // This handles the case where initialFilters exist but brands/attributeValues weren't ready yet
-  useEffect(() => {
-    // Only re-run if we have initialized but data wasn't ready initially
-    if (!hasInitializedFromUrlRef.current) return;
-    if (!brands.length || !attributeValues.length) return;
-    
-    // Only re-run if we have initialFilters but filters weren't applied
-    if (initialFilters && Array.isArray(initialFilters) && initialFilters.length > 0) {
-      // Check if filters are already applied
-      const hasBrand = selectedBrand !== null;
-      const hasAttributes = Object.keys(selectedAttributes).length > 0;
-      
-      // If we have initialFilters but no filters applied, try again
-      if (!hasBrand && !hasAttributes) {
-        // Force re-initialization
-        const pathSegments = initialFilters.map(segment => decodeURIComponent(segment));
-        
-        if (pathSegments.length > 0) {
-          const parsedBrand = parseBrandFromPathSegments(pathSegments, brands, attributeValues);
-          if (parsedBrand) {
-            setSelectedBrand(parsedBrand);
-          }
-          
-          const parsedAttrs = parsePathSegments(pathSegments, attributeValues, brands);
-          if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
-            setSelectedAttributes(parsedAttrs);
-          }
-        }
-      }
-    }
-  }, [brands, attributeValues, initialFilters, selectedBrand, selectedAttributes, setSelectedBrand, setSelectedAttributes]);
 
   // Set initial category from URL path or props (only if not set by hook)
   // This ensures selectedCategorySlug is set correctly for URL updates

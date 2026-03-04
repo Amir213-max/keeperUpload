@@ -67,6 +67,7 @@ export function useProductFilters({
   const dataReadyRef = useRef(false); // Track if brands/attributes are loaded
   const brandsRef = useRef(brands); // Store brands to avoid re-parsing on data changes
   const attributeValuesRef = useRef(attributeValues); // Store attributeValues to avoid re-parsing on data changes
+  const hasRetriedParsingRef = useRef(false); // Track if we've already retried parsing after data became ready
 
   // Determine if we're on a /products/ route
   const isProductsRoute = pathname?.startsWith("/products/");
@@ -82,13 +83,75 @@ export function useProductFilters({
 
   // Track when data is ready and update refs
   useEffect(() => {
+    const wasDataReady = dataReadyRef.current;
     if (brands.length > 0 || attributeValues.length > 0) {
       dataReadyRef.current = true;
     }
     // Update refs when data changes (but don't trigger re-parsing)
     brandsRef.current = brands;
     attributeValuesRef.current = attributeValues;
-  }, [brands, attributeValues]);
+    
+    // 🔹 Retry mechanism: إذا كانت البيانات غير جاهزة في البداية ووصلت الآن
+    // وأصبحت جاهزة، نحاول parsing مرة أخرى للـ URL
+    // لكن فقط مرة واحدة لمنع infinite loop
+    // 🔹 أيضاً: إذا كان URL يحتوي على filters لكن لم يتم تطبيقها بعد
+    if (!wasDataReady && dataReadyRef.current && isInitialLoadRef.current && !hasRetriedParsingRef.current) {
+      // Mark as retried immediately to prevent infinite loop
+      hasRetriedParsingRef.current = true;
+      
+      // البيانات أصبحت جاهزة بعد initial load، نحاول parsing مرة أخرى
+      const currentPathname = typeof window !== "undefined" ? window.location.pathname : pathname;
+      if (currentPathname) {
+        // Check if there are path segments that need parsing
+        const isProductsRouteCheck = currentPathname.startsWith("/products/");
+        let pathSegments = [];
+        
+        if (isProductsRouteCheck) {
+          const pathWithoutBase = currentPathname.replace("/products/", "").split("?")[0];
+          const parts = pathWithoutBase.split("/").filter((p) => p);
+          if (parts.length > 1) {
+            pathSegments = parts.slice(1);
+          }
+        } else if (effectiveBasePath) {
+          const pathParts = currentPathname.split("/").filter((p) => p);
+          const basePathParts = effectiveBasePath.split("/").filter((p) => p);
+          if (pathParts.length > basePathParts.length) {
+            pathSegments = pathParts.slice(basePathParts.length);
+          }
+        }
+        
+        // 🔹 إذا كان هناك path segments لكن الفلاتر لم تُطبق بعد، نحاول parsing مرة أخرى
+        const hasNoFilters = !selectedBrandRef.current && Object.keys(selectedAttributesRef.current).length === 0;
+        if (pathSegments.length > 0 && brands.length > 0 && attributeValues.length > 0 && hasNoFilters) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 useProductFilters: Retrying parsing with now-ready data:', pathSegments);
+          }
+          
+          // Parse brand
+          const parsedBrand = parseBrandFromPathSegments(pathSegments, brands, attributeValues);
+          if (parsedBrand && parsedBrand !== selectedBrandRef.current) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔹 useProductFilters: Retry - Parsing brand:', parsedBrand);
+            }
+            setSelectedBrand(parsedBrand);
+          }
+          
+          // Parse attributes
+          const parsedAttrs = parsePathSegments(pathSegments, attributeValues, brands);
+          if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
+            const currentAttrsStr = JSON.stringify(selectedAttributesRef.current);
+            const newAttrsStr = JSON.stringify(parsedAttrs);
+            if (currentAttrsStr !== newAttrsStr) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('🔹 useProductFilters: Retry - Parsing attributes:', parsedAttrs);
+              }
+              setSelectedAttributes(parsedAttrs);
+            }
+          }
+        }
+      }
+    }
+  }, [brands, attributeValues, pathname, effectiveBasePath]);
 
   // Update selectedCategorySlug when selectedCategoryId changes
   // 🔹 منع تحديث selectedCategorySlug على initial load إذا كان URL يحتوي على category slug
@@ -140,14 +203,39 @@ export function useProductFilters({
     
     // On initial load: parse once when data is ready
     if (isInitialLoadRef.current) {
-      // Wait for data to be ready before parsing
-      // لكن إذا كان هناك path segments في URL، نحاول parsing حتى لو البيانات غير جاهزة بعد
-      const hasPathSegments = currentPathname.split("/").filter((p) => p).length > (effectiveBasePath ? effectiveBasePath.split("/").filter((p) => p).length : 0);
-      if (!dataReadyRef.current && !hasPathSegments) {
+      // 🔹 على initial load، نحاول parsing حتى لو البيانات غير جاهزة
+      // لأن URL قد يحتوي على فلاتر مهمة يجب تطبيقها فوراً
+      // إذا كانت البيانات غير جاهزة، سنحاول parsing مرة أخرى عند وصولها (retry mechanism)
+      
+      // 🔹 حساب hasPathSegments بشكل صحيح للصفحات الرئيسية والفرعية
+      let hasPathSegments = false;
+      if (isProductsRoute) {
+        // للصفحات الفرعية: /products/[category]/[filters]
+        const pathWithoutBase = currentPathname.replace("/products/", "").split("?")[0];
+        const parts = pathWithoutBase.split("/").filter((p) => p);
+        // إذا كان هناك أكثر من جزء (category + filters)، فهناك filters
+        hasPathSegments = parts.length > 1;
+      } else if (effectiveBasePath) {
+        // للصفحات الرئيسية: /[basePath]/[filters]
+        const pathParts = currentPathname.split("/").filter((p) => p);
+        const basePathParts = effectiveBasePath.split("/").filter((p) => p);
+        hasPathSegments = pathParts.length > basePathParts.length;
+      } else {
+        // Fallback: حساب عادي
+        hasPathSegments = currentPathname.split("/").filter((p) => p).length > 0;
+      }
+      
+      // 🔹 إذا كان URL يحتوي على فلاتر ولم يتم parsing بعد، نسمح بالparsing
+      // حتى لو البيانات غير جاهزة بعد (سيتم retry عند وصولها)
+      if (hasPathSegments && !hasParsedInitialUrlRef.current) {
+        // نسمح بالparsing حتى لو البيانات غير جاهزة
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔹 useProductFilters: URL has path segments, allowing parsing even if data not ready');
+        }
+      } else if (!hasPathSegments && !dataReadyRef.current) {
         // إذا لم تكن هناك path segments، انتظر البيانات
         return;
-      }
-      if (hasParsedInitialUrlRef.current && dataReadyRef.current) {
+      } else if (hasParsedInitialUrlRef.current && dataReadyRef.current) {
         // إذا تم parsing بالفعل والبيانات جاهزة، لا تعيد parsing
         return;
       }
@@ -210,23 +298,30 @@ export function useProductFilters({
 
         // Update category if slug found
         const shouldParse = isInitial || isBrowserNav;
-        if (categorySlug && categoriesWithProducts.length > 0 && shouldParse) {
-          const foundCategory = categoriesWithProducts.find(
-            (cat) => cat.slug === categorySlug
-          );
-          if (foundCategory) {
-            // Set category ID if different
-            if (foundCategory.id !== selectedCategoryId) {
-              setSelectedCategoryId(foundCategory.id);
-            }
-            // Also set category slug directly to ensure URL updates work correctly
-            // 🔹 على initial load، لا نقوم بتحديث selectedCategorySlug إذا كان URL يحتوي على category slug
-            // لأن هذا قد يسبب refresh تلقائي
-            if (!isInitial || foundCategory.slug !== selectedCategorySlug) {
-              if (foundCategory.slug !== selectedCategorySlug) {
-                setSelectedCategorySlug(foundCategory.slug);
+        // على initial load، نحاول parsing حتى لو categoriesWithProducts غير جاهزة
+        // لأن البيانات قد تأتي بعد قليل، وسنعيد parsing عند وصولها
+        if (categorySlug && shouldParse) {
+          if (categoriesWithProducts.length > 0) {
+            const foundCategory = categoriesWithProducts.find(
+              (cat) => cat.slug === categorySlug
+            );
+            if (foundCategory) {
+              // Set category ID if different
+              if (foundCategory.id !== selectedCategoryId) {
+                setSelectedCategoryId(foundCategory.id);
+              }
+              // Also set category slug directly to ensure URL updates work correctly
+              // 🔹 على initial load، لا نقوم بتحديث selectedCategorySlug إذا كان URL يحتوي على category slug
+              // لأن هذا قد يسبب refresh تلقائي
+              if (!isInitial || foundCategory.slug !== selectedCategorySlug) {
+                if (foundCategory.slug !== selectedCategorySlug) {
+                  setSelectedCategorySlug(foundCategory.slug);
+                }
               }
             }
+          } else if (isInitial) {
+            // على initial load، إذا كانت categoriesWithProducts غير جاهزة، نحفظ categorySlug للـ retry
+            // سيتم parsing مرة أخرى عند وصول categoriesWithProducts
           }
         } else if (!categorySlug && selectedCategoryId && shouldParse) {
           // Clear category only if URL is base page
@@ -252,26 +347,24 @@ export function useProductFilters({
       // Skip parsing if data is not ready yet - but don't clear existing filters
       // على initial load، نحاول parsing حتى لو البيانات غير جاهزة بعد
       // لأن البيانات قد تأتي بعد قليل، وسنعيد parsing عند وصولها
+      // خاصة للصفحات الفرعية (/products/[slug]/[...filters])
+      // 🔹 على initial load، نحاول parsing حتى لو البيانات غير جاهزة
+      // لأن URL قد يحتوي على فلاتر مهمة يجب تطبيقها
+      // إذا كانت البيانات غير جاهزة، سنحاول parsing مرة أخرى عند وصولها (retry mechanism)
       if (!isInitial && (currentBrands.length === 0 || currentAttributeValues.length === 0)) {
         // على browser navigation، إذا لم تكن البيانات جاهزة، لا تقم بالparsing
         return;
       }
       // على initial load، نحاول parsing حتى لو البيانات غير جاهزة
-      // لأن URL قد يحتوي على فلاتر مهمة يجب تطبيقها
+      // لكن إذا كانت البيانات غير جاهزة، نحفظ pathSegments للـ retry لاحقاً
       
-      // 🔹 على initial load، نمنع updateUrlFromState من التحديث
-      // لأن URL الحالي هو الصحيح ولا نريد تغييره
-      if (isInitial) {
-        isUpdatingUrlRef.current = true;
-        setTimeout(() => {
-          isUpdatingUrlRef.current = false;
-        }, 1000); // 🔹 منع التحديث لمدة ثانية واحدة على initial load
-      }
-      
-      // Parse brand from path segments
+      // 🔹 Parse brand from path segments FIRST
       if (pathSegments.length > 0 && shouldParse) {
         const parsedBrand = parseBrandFromPathSegments(pathSegments, currentBrands, currentAttributeValues);
         if (parsedBrand && parsedBrand !== selectedBrandRef.current) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 useProductFilters: Parsing brand from URL:', parsedBrand);
+          }
           setSelectedBrand(parsedBrand);
         } else if (!parsedBrand && selectedBrandRef.current && pathSegments.length > 0) {
           // If URL has segments but brand not found:
@@ -279,15 +372,28 @@ export function useProductFilters({
           // - Could be data not ready yet (keep brand)
           // - Only clear if we're sure it's not a brand (after data is loaded)
           // For now, keep existing brand to prevent flickering
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 useProductFilters: Brand not found in path segments, keeping existing brand');
+          }
         }
       } else if (pathSegments.length === 0 && selectedBrandRef.current && shouldParse) {
+        // 🔹 على initial load، لا نمسح الفلاتر الموجودة
+        // لأنها قد تكون من initialFilters من server component
         // Only clear brand if URL is truly base page (no segments at all) AND it's explicit browser navigation
         // Never clear on initial load if we're coming from a filtered URL
         if (isBrowserNav && !isInitial) {
           const pathParts = currentPathname.split("/").filter((p) => p);
           const basePathParts = effectiveBasePath ? effectiveBasePath.split("/").filter((p) => p) : [];
           if (pathParts.length <= basePathParts.length) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔹 useProductFilters: Clearing brand (browser navigation to base page)');
+            }
             setSelectedBrand(null);
+          }
+        } else if (isInitial) {
+          // 🔹 على initial load، لا نمسح الفلاتر الموجودة
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 useProductFilters: Keeping existing brand on initial load (may be from initialFilters)');
           }
         }
       }
@@ -304,12 +410,16 @@ export function useProductFilters({
       }
 
       // Parse attributes from path segments
+      let parsedAttrs = {};
       if (pathSegments.length > 0 && shouldParse) {
-        const parsedAttrs = parsePathSegments(pathSegments, currentAttributeValues, currentBrands);
+        parsedAttrs = parsePathSegments(pathSegments, currentAttributeValues, currentBrands);
         if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
           const currentAttrsStr = JSON.stringify(selectedAttributesRef.current);
           const newAttrsStr = JSON.stringify(parsedAttrs);
           if (currentAttrsStr !== newAttrsStr) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔹 Parsing attributes from URL:', parsedAttrs);
+            }
             setSelectedAttributes(parsedAttrs);
           }
         } else if (Object.keys(selectedAttributesRef.current).length > 0 && pathSegments.length > 0) {
@@ -317,26 +427,64 @@ export function useProductFilters({
           // - Could be brand only (keep attributes)
           // - Could be data not ready yet (keep attributes)
           // Keep existing attributes to prevent flickering
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 Attributes not found in path segments, keeping existing attributes');
+          }
+        } else if (pathSegments.length > 0 && Object.keys(parsedAttrs || {}).length === 0) {
+          // 🔹 إذا كان هناك path segments لكن لم يتم parsing أي attributes
+          // قد تكون البيانات غير جاهزة بعد، سنحاول parsing مرة أخرى عند وصولها
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 Path segments found but no attributes parsed - data may not be ready yet:', pathSegments);
+          }
         }
       } else if (pathSegments.length === 0 && Object.keys(selectedAttributesRef.current).length > 0 && shouldParse) {
+        // 🔹 على initial load، لا نمسح الفلاتر الموجودة
+        // لأنها قد تكون من initialFilters من server component
         // Only clear attributes if URL is truly base page (no segments at all) AND it's explicit browser navigation
         // Never clear on initial load if we're coming from a filtered URL
         if (isBrowserNav && !isInitial) {
           const pathParts = currentPathname.split("/").filter((p) => p);
           const basePathParts = effectiveBasePath ? effectiveBasePath.split("/").filter((p) => p) : [];
           if (pathParts.length <= basePathParts.length) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔹 useProductFilters: Clearing attributes (browser navigation to base page)');
+            }
             setSelectedAttributes({});
           }
+        } else if (isInitial) {
+          // 🔹 على initial load، لا نمسح الفلاتر الموجودة
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 useProductFilters: Keeping existing attributes on initial load (may be from initialFilters)');
+          }
         }
+      }
+
+      // 🔹 على initial load، نمنع updateUrlFromState من التحديث بعد parsing
+      // لأن URL الحالي هو الصحيح ولا نريد تغييره
+      // خاصة إذا كان URL يحتوي على فلاتر
+      if (isInitial) {
+        isUpdatingUrlRef.current = true;
+        // 🔹 زيادة المدة لمنع التحديث حتى يتم parsing الفلاتر
+        setTimeout(() => {
+          isUpdatingUrlRef.current = false;
+        }, 2000); // 🔹 منع التحديث لمدة ثانيتين على initial load
       }
 
       // Mark initial load as complete after first parse
       if (isInitial) {
         hasParsedInitialUrlRef.current = true;
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔹 Initial URL parsing complete. Filters:', {
+            brand: selectedBrandRef.current,
+            attributes: selectedAttributesRef.current,
+            pathSegments
+          });
+        }
         // 🔹 تأخير تعيين isInitialLoadRef.current = false لضمان عدم تحديث URL
+        // خاصة إذا كان URL يحتوي على فلاتر
         setTimeout(() => {
           isInitialLoadRef.current = false;
-        }, 1500); // 🔹 تأخير 1.5 ثانية لضمان عدم تحديث URL على initial load
+        }, 2500); // 🔹 تأخير 2.5 ثانية لضمان عدم تحديث URL على initial load
       }
     }, isInitial ? 200 : 100); // 🔹 زيادة timeout على initial load لضمان parsing صحيح
 
@@ -352,6 +500,37 @@ export function useProductFilters({
     isProductsRoute,
     setSelectedCategoryId,
   ]);
+
+  // 🔹 Retry mechanism: إعادة parsing للـ category slug عند وصول categoriesWithProducts
+  useEffect(() => {
+    // فقط على initial load وإذا كانت categoriesWithProducts أصبحت جاهزة
+    if (!isInitialLoadRef.current || categoriesWithProducts.length === 0) return;
+    
+    const currentPathname = typeof window !== "undefined" ? window.location.pathname : pathname;
+    if (!currentPathname || !currentPathname.startsWith("/products/")) return;
+    
+    // Parse category slug from URL
+    const pathWithoutBase = currentPathname.replace("/products/", "").split("?")[0];
+    const parts = pathWithoutBase.split("/").filter((p) => p);
+    
+    if (parts.length > 0) {
+      const categorySlug = decodeURIComponent(parts[0]);
+      const foundCategory = categoriesWithProducts.find(
+        (cat) => cat.slug === categorySlug
+      );
+      
+      if (foundCategory) {
+        // Set category ID if different
+        if (foundCategory.id !== selectedCategoryId) {
+          setSelectedCategoryId(foundCategory.id);
+        }
+        // Set category slug if different
+        if (foundCategory.slug !== selectedCategorySlug) {
+          setSelectedCategorySlug(foundCategory.slug);
+        }
+      }
+    }
+  }, [categoriesWithProducts, pathname, selectedCategoryId, selectedCategorySlug, setSelectedCategoryId]);
 
   // 🔹 إضافة listener لـ popstate للتعامل مع back/forward buttons
   useEffect(() => {
@@ -381,13 +560,41 @@ export function useProductFilters({
     if (disableUrlUpdates) return;
     if (isUpdatingUrlRef.current) return;
     
-    // 🔹 على initial load، لا نقوم بتحديث URL لأن URL الحالي هو الصحيح
-    if (isInitialLoadRef.current) {
-      return;
-    }
-
+    const currentPathname = typeof window !== "undefined" ? window.location.pathname : pathname;
     const currentBrand = selectedBrandRef.current;
     const currentAttributes = selectedAttributesRef.current;
+    
+    // 🔹 على initial load، إذا كان URL يحتوي على فلاتر ولم يتم parsing بعد، لا نقوم بتحديث URL
+    // هذا يمنع حذف الفلاتر من URL قبل parsingها
+    if (isInitialLoadRef.current || !hasParsedInitialUrlRef.current) {
+      if (currentPathname) {
+        const isProductsRoute = currentPathname.startsWith("/products/");
+        if (isProductsRoute) {
+          const pathWithoutBase = currentPathname.replace("/products/", "").split("?")[0];
+          const parts = pathWithoutBase.split("/").filter((p) => p);
+          // إذا كان هناك أكثر من جزء (category + filters)، لا نقوم بتحديث URL حتى يتم parsing
+          if (parts.length > 1) {
+            // 🔹 تحقق من أن الفلاتر لم يتم parsing بعد
+            // إذا كانت الفلاتر فارغة والـ URL يحتوي على فلاتر، لا نقوم بتحديث URL
+            const hasNoFilters = !currentBrand && Object.keys(currentAttributes).length === 0;
+            if (hasNoFilters) {
+              return; // لا نقوم بتحديث URL إذا كانت الفلاتر فارغة والـ URL يحتوي على فلاتر
+            }
+          }
+        } else if (effectiveBasePath) {
+          const pathParts = currentPathname.split("/").filter((p) => p);
+          const basePathParts = effectiveBasePath.split("/").filter((p) => p);
+          // إذا كان هناك أكثر من base path (base + filters)، لا نقوم بتحديث URL حتى يتم parsing
+          if (pathParts.length > basePathParts.length) {
+            // 🔹 تحقق من أن الفلاتر لم يتم parsing بعد
+            const hasNoFilters = !currentBrand && Object.keys(currentAttributes).length === 0;
+            if (hasNoFilters) {
+              return; // لا نقوم بتحديث URL إذا كانت الفلاتر فارغة والـ URL يحتوي على فلاتر
+            }
+          }
+        }
+      }
+    }
 
     let newUrl = null;
 
@@ -407,7 +614,6 @@ export function useProductFilters({
 
     if (!newUrl) return;
 
-    const currentPathname = typeof window !== "undefined" ? window.location.pathname : pathname;
     const currentPathnameOnly = currentPathname.split("?")[0];
     const newPathnameOnly = newUrl.split("?")[0];
 

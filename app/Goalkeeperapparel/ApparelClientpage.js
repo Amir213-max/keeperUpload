@@ -278,26 +278,19 @@ useEffect(() => {
       
       // ✅ حساب النسبة المئوية الفعلية
       if (totalImages > 0) {
-        const progress = Math.min((loadedCount / totalImages) * 100, 95); // توقف عند 95% حتى تحمل كل شيء
+        const progress = Math.min((loadedCount / totalImages) * 100, 100);
         setImageProgress(progress);
       }
       
-      // ✅ إذا تم تحميل جميع الصور، انتظر قليلاً ثم أكمل
+      // ✅ إذا تم تحميل جميع الصور، أكمل إلى 100% ثم اخف الشريط
       if (loadedCount >= totalImages && totalImages > 0) {
-        // انتظر حتى تحمل الصفحة بالكامل
+        // تأكد من الوصول إلى 100%
+        setImageProgress(100);
+        // انتظر قليلاً للتأكد من أن كل شيء تم تحميله
         setTimeout(() => {
-          // استخدم requestAnimationFrame للتأكد من أن كل شيء تم تحميله
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              setImageProgress(100);
-              setTimeout(() => {
-                setImagesLoading(false);
-                setImageProgress(0);
-                setShowProducts(true); // عرض المنتجات بعد اكتمال التحميل
-              }, 300);
-            });
-          });
-        }, 200); // انتظر 200ms بعد تحميل آخر صورة
+          setImagesLoading(false);
+          setShowProducts(true); // عرض المنتجات بعد اكتمال التحميل
+        }, 300);
       }
     }
   }, []);
