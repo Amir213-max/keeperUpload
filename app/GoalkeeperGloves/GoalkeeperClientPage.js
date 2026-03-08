@@ -26,6 +26,7 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
   const categoryContext = useCategory();
   const selectedCategoryId = categoryContext?.selectedCategoryId ?? null;
   const setSelectedCategoryId = categoryContext?.setSelectedCategoryId ?? (() => {});
+  const setGoalkeeperGlovesBrands = categoryContext?.setGoalkeeperGlovesBrands ?? (() => {});
   const [selectedCategoryName, setSelectedCategoryName] = useState(null);
   const [filteredProducts, setFilteredProducts] = useState(products);
   const [currentPage, setCurrentPage] = useState(1);
@@ -69,6 +70,13 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
       )
     );
   }, [categories, products]);
+
+  // 🔹 حفظ البراندات في الـ context للاستخدام في الـ sidebar
+  useEffect(() => {
+    if (brands && brands.length > 0) {
+      setGoalkeeperGlovesBrands(brands);
+    }
+  }, [brands, setGoalkeeperGlovesBrands]);
 
   // Use unified filter hook
   const {

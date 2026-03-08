@@ -124,7 +124,7 @@ export default function NavbarWithLinks() {
   // ✅ جلب بيانات المستخدم والتوكن من الـ AuthContext
   const { user, token, logout } = useAuth();
 
-    const { setSelectedCategoryId } = useCategory();
+    const { setSelectedCategoryId, goalkeeperGlovesBrands } = useCategory();
   const handleCategorySelect = (catId) => {
     setSelectedCategoryId(catId);
     setSidebarOpen(false);
@@ -361,6 +361,7 @@ export default function NavbarWithLinks() {
           isOpen={sidebarOpen}
           setIsOpen={setSidebarOpen}
           onSelectCategory={handleCategorySelect}
+          brands={goalkeeperGlovesBrands || []}
           isRTL={lang === 'ar'}
         />
       </div>

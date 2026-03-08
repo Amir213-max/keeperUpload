@@ -5,8 +5,14 @@ const CategoryContext = createContext();
 
 export function CategoryProvider({ children }) {
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+  const [goalkeeperGlovesBrands, setGoalkeeperGlovesBrands] = useState([]);
   return (
-    <CategoryContext.Provider value={{ selectedCategoryId, setSelectedCategoryId }}>
+    <CategoryContext.Provider value={{ 
+      selectedCategoryId, 
+      setSelectedCategoryId,
+      goalkeeperGlovesBrands,
+      setGoalkeeperGlovesBrands
+    }}>
       {children}
     </CategoryContext.Provider>
   );
