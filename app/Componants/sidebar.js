@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { FaShoppingCart, FaUser } from 'react-icons/fa';
-import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { ChevronDown, ChevronRight, X, ArrowLeft } from "lucide-react";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { Root_CATEGORIES, GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,6 +19,8 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
   const [categories, setCategories] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [openParentId, setOpenParentId] = useState(null);
+  const [selectedParentForDetail, setSelectedParentForDetail] = useState(null);
+  const [showParentDetail, setShowParentDetail] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   // const { openChat } = useChat();
@@ -117,6 +119,14 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
     return parentCategory?.parent?.id || null;
   }, [parentCategories]);
 
+  // 🔹 إعادة تعيين حالة parent detail عند إغلاق الـ drawer
+  useEffect(() => {
+    if (!isOpen) {
+      setShowParentDetail(false);
+      setSelectedParentForDetail(null);
+    }
+  }, [isOpen]);
+
   // 🔹 فتح الـ subcategories تلقائياً عند تحميل الصفحة بناءً على الـ URL
   useEffect(() => {
     if (!pathname || !parentCategories.length) return;
@@ -179,6 +189,24 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
     };
 
   const handleParentClick = (parentId, parentName, event) => {
+    // 🔹 التحقق من وضع الجوال (الـ drawer مفتوح فقط على الجوال بسبب lg:hidden)
+    // إذا كان isOpen = true، فهذا يعني أننا في وضع الجوال
+    const isMobile = isOpen;
+    
+    // 🔹 في وضع الجوال: عرض شاشة التفاصيل بدلاً من التنقل المباشر
+    if (isMobile) {
+      const parentFromParentCategories = parentCategories.find(item => 
+        String(item.parent?.id) === String(parentId) || item.parent?.id === parentId
+      );
+      
+      if (parentFromParentCategories) {
+        setSelectedParentForDetail(parentFromParentCategories);
+        setShowParentDetail(true);
+        return;
+      }
+    }
+    
+    // 🔹 في وضع الديسكتوب: التنقل المباشر (السلوك الحالي)
     // 🔹 البحث عن الـ parent category من categories
     const parentCategory = categories.find((cat) => {
       return String(cat.id) === String(parentId) || cat.id === parentId;
@@ -264,6 +292,57 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
     }
   };
 
+  // 🔹 دالة للتنقل إلى صفحة الـ parent (لزر "Show all")
+  const handleShowAllClick = (parentId, parentName) => {
+    // استخدام parentName مباشرة لأن getParentRoute يحتاج فقط الاسم
+    const route = getParentRoute(parentName);
+
+    if (route) {
+      localStorage.setItem('sidebar_open_parent_id', String(parentId));
+      
+      const parentRoutes = [
+        '/GoalkeeperGloves',
+        '/FootballBoots',
+        '/Goalkeeperapparel',
+        '/Goalkeeperequipment',
+        '/Teamsport',
+        '/Sale'
+      ];
+      
+      const isSubcategoryPage = pathname.startsWith('/products/');
+      const isCurrentParentPage = parentRoutes.some(parentRoute => pathname === parentRoute || pathname.startsWith(parentRoute + '/'));
+      const isSameParentPage = pathname === route || pathname.startsWith(route + '/');
+      
+      if (isSubcategoryPage || isSameParentPage || (isCurrentParentPage && pathname !== route)) {
+        window.location.replace(route);
+      } else {
+        window.location.replace(route);
+      }
+      
+      setShowParentDetail(false);
+      setSelectedParentForDetail(null);
+      if (setIsOpen) setIsOpen(false);
+    } else {
+      // Fallback: البحث عن parent category في categories للوصول للـ slug
+      const parentCategory = categories.find((cat) => {
+        return String(cat.id) === String(parentId) || cat.id === parentId;
+      });
+      
+      if (parentCategory?.slug) {
+        const slug = encodeURIComponent(parentCategory.slug);
+        router.push(`/products/${slug}`, { scroll: false });
+        setShowParentDetail(false);
+        setSelectedParentForDetail(null);
+        if (setIsOpen) setIsOpen(false);
+      } else {
+        console.warn("⚠️ Could not navigate to parent category:", parentId, parentName);
+        // إعادة تعيين الحالة حتى لو فشل التنقل
+        setShowParentDetail(false);
+        setSelectedParentForDetail(null);
+      }
+    }
+  };
+
   // دالة التنقل للـ Products مع التأكد من setIsOpen
   const handleSubcategoryClick = (subId) => {
     console.log("Subcategory ID clicked:", subId);
@@ -334,27 +413,44 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
               style={{ right: isRTL ? 0 : 'auto', left: isRTL ? 'auto' : 0 }}
             >
               {/* زر الإغلاق */}
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">{t("Menu")}</h2>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="text-white hover:text-amber-400"
-                >
-                  <X size={22} />
-                </button>
-              </div>
+              {!showParentDetail && (
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-semibold">{t("Menu")}</h2>
+                  <button
+                    onClick={() => setIsOpen(false)}
+                    className="text-white hover:text-amber-400"
+                  >
+                    <X size={22} />
+                  </button>
+                </div>
+              )}
 
-              {/* قائمة الأقسام */}
-              <SidebarContent
-                parentCategories={parentCategories}
-                categories={categories}
-                openParentId={openParentId}
-                handleParentClick={handleParentClick}
-                onSelectCategory={handleSubcategoryClick} // Drawer safe
-                setIsOpen={setIsOpen}
-                isRTL={isRTL}
-                t={t}
-              />
+              {/* قائمة الأقسام أو ParentDetailView */}
+              {showParentDetail && selectedParentForDetail ? (
+                <ParentDetailView
+                  selectedParent={selectedParentForDetail}
+                  categories={categories}
+                  onShowAll={handleShowAllClick}
+                  onSelectCategory={handleSubcategoryClick}
+                  onBack={() => {
+                    setShowParentDetail(false);
+                    setSelectedParentForDetail(null);
+                  }}
+                  isRTL={isRTL}
+                  t={t}
+                />
+              ) : (
+                <SidebarContent
+                  parentCategories={parentCategories}
+                  categories={categories}
+                  openParentId={openParentId}
+                  handleParentClick={handleParentClick}
+                  onSelectCategory={handleSubcategoryClick} // Drawer safe
+                  setIsOpen={setIsOpen}
+                  isRTL={isRTL}
+                  t={t}
+                />
+              )}
 
               {/* أيقونات أسفل الستارة */}
               <div className={`mt-auto pt-4 border-t border-neutral-700 flex flex-col gap-3`}>
@@ -410,6 +506,70 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
 
       <CartSidebar isOpen={cartOpen} onClose={() => setCartOpen(false)} />
     </>
+  );
+}
+
+// 🔹 مكون ParentDetailView للعرض في وضع الجوال
+function ParentDetailView({ selectedParent, categories, onShowAll, onSelectCategory, onBack, isRTL, t }) {
+  if (!selectedParent) return null;
+
+  const parent = selectedParent.parent;
+  const subCategories = categories
+    .filter(sub => sub.parent?.id === parent.id)
+    .sort((a, b) => {
+      const orderA = a.order ?? 9999;
+      const orderB = b.order ?? 9999;
+      return orderA - orderB;
+    });
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header with back button and title */}
+      <div className="flex items-center gap-3 mb-4 pb-3 border-b border-neutral-700">
+        <button
+          onClick={onBack}
+          className="text-white hover:text-amber-400 transition-colors p-1"
+          aria-label="Back"
+        >
+          <ArrowLeft size={20} className={isRTL ? "rotate-180" : ""} />
+        </button>
+        <h2 className="text-lg font-semibold text-white">
+          <DynamicText>{parent.name}</DynamicText>
+        </h2>
+      </div>
+
+      {/* Parent name */}
+      <div className="px-3 py-2 mb-2">
+        <h3 className="text-base font-medium text-white">
+          <DynamicText>{parent.name}</DynamicText>
+        </h3>
+      </div>
+
+      {/* Show all button */}
+      <button
+        onClick={() => onShowAll(parent.id, parent.name)}
+        className="px-3 py-2 text-sm text-white hover:bg-neutral-800 hover:text-amber-400 transition-all rounded mb-2 text-left"
+        dir={isRTL ? "rtl" : "ltr"}
+      >
+        {t("Show all")}
+      </button>
+
+      {/* Subcategories list */}
+      {subCategories.length > 0 && (
+        <ul className="space-y-1 flex-1 overflow-y-auto">
+          {subCategories.map(sub => (
+            <li
+              key={sub.id}
+              className="px-3 py-2 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white transition-all rounded"
+              onClick={() => onSelectCategory && onSelectCategory(sub.id)}
+              dir={isRTL ? "rtl" : "ltr"}
+            >
+              <DynamicText>{sub.name}</DynamicText>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
