@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronDownIcon, CheckIcon } from '@heroicons/react/20/solid';
 import { useTranslation } from '../contexts/TranslationContext';
 import DynamicText from '../components/DynamicText';
@@ -13,17 +13,128 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
   const [showAllFilters, setShowAllFilters] = useState(false);
   const { t, lang } = useTranslation();
   const isRTL = lang === 'ar';
+  // 🔹 تهيئة prevInitialFiltersRef بقيمة null في البداية لتجنب مشاكل التهيئة
+  const prevInitialFiltersRef = useRef(null);
+  const prevSelectedFiltersRef = useRef(null);
+  const isUpdatingFromInitialRef = useRef(false);
 
-  // 🔹 مزامنة selectedFilters مع initialFilters من URL
+  // 🔹 مزامنة selectedFilters مع initialFilters
+  // استخدام deep comparison للتحقق من التغييرات الفعلية
   useEffect(() => {
-    if (initialFilters && Object.keys(initialFilters).length > 0) {
-      setSelectedFilters(initialFilters);
+    // 🔹 تحويل initialFilters إلى string للمقارنة
+    // استخدام JSON.stringify مع sorting للـ keys لضمان المقارنة الصحيحة
+    const normalizeFilters = (filters) => {
+      // 🔹 معالجة جميع الحالات: null, undefined, empty objects, arrays
+      if (!filters || typeof filters !== 'object' || Array.isArray(filters)) {
+        return '{}';
+      }
+      
+      const sorted = Object.keys(filters).sort().reduce((acc, key) => {
+        const value = filters[key];
+        // 🔹 معالجة المصفوفات: ترتيبها وإزالة القيم الفارغة/null/undefined
+        if (Array.isArray(value)) {
+          const filteredArray = value.filter(v => v != null && v !== '');
+          acc[key] = filteredArray.length > 0 ? [...filteredArray].sort() : [];
+        } else if (value != null && value !== '') {
+          // 🔹 تجاهل القيم null, undefined, empty strings
+          acc[key] = value;
+        }
+        return acc;
+      }, {});
+      
+      return JSON.stringify(sorted);
+    };
+    
+    const currentInitialFiltersStr = normalizeFilters(initialFilters);
+    const prevInitialFiltersStr = prevInitialFiltersRef.current;
+    
+    // التحقق من وجود تغيير فعلي في initialFilters
+    // مقارنة أكثر دقة: التحقق من null و empty objects
+    const hasChanged = prevInitialFiltersStr === null || 
+                      currentInitialFiltersStr !== prevInitialFiltersStr;
+    
+    if (hasChanged) {
+      // 🔹 إنشاء نسخة جديدة من initialFilters لضمان التحديث
+      const newFilters = initialFilters ? { ...initialFilters } : {};
+      
+      // 🔹 تنظيف المصفوفات الفارغة
+      Object.keys(newFilters).forEach(key => {
+        if (Array.isArray(newFilters[key]) && newFilters[key].length === 0) {
+          delete newFilters[key];
+        }
+      });
+      
+      // 🔹 تعيين flag لمنع استدعاء onFilterChange عند التحديث من initialFilters
+      isUpdatingFromInitialRef.current = true;
+      setSelectedFilters(newFilters);
+      // تحديث المرجع للقيمة السابقة
+      prevInitialFiltersRef.current = currentInitialFiltersStr;
+      prevSelectedFiltersRef.current = JSON.stringify(normalizeFilters(newFilters));
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔹 FilterDropdown: Updated selectedFilters from initialFilters:', newFilters);
+        console.log('🔹 FilterDropdown: Previous:', prevInitialFiltersStr);
+        console.log('🔹 FilterDropdown: Current:', currentInitialFiltersStr);
+        console.log('🔹 FilterDropdown: selectedFilters updated to:', newFilters);
+        console.log('🔹 FilterDropdown: Brand selected:', newFilters.Brand);
+        console.log('🔹 FilterDropdown: Brand array:', newFilters.Brand);
+        console.log('🔹 FilterDropdown: Brand length:', newFilters.Brand?.length);
+        console.log('🔹 FilterDropdown: Has changed:', hasChanged);
+      }
+      
+      // 🔹 إعادة تعيين flag بعد التحديث
+      setTimeout(() => {
+        isUpdatingFromInitialRef.current = false;
+      }, 0);
+    } else {
+      // تهيئة prevInitialFiltersRef في المرة الأولى
+      if (prevInitialFiltersStr === null) {
+        prevInitialFiltersRef.current = currentInitialFiltersStr;
+        // تحديث selectedFilters في المرة الأولى أيضاً
+        const newFilters = initialFilters ? { ...initialFilters } : {};
+        setSelectedFilters(newFilters);
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔹 FilterDropdown: Initial mount with initialFilters:', initialFilters);
+          console.log('🔹 FilterDropdown: Initial selectedFilters:', newFilters);
+        }
+      }
     }
   }, [initialFilters]);
 
   // الفلترة تحدث فوراً عند اختيار القيم
   useEffect(() => {
-    onFilterChange(selectedFilters);
+    // 🔹 منع استدعاء onFilterChange عند التحديث من initialFilters
+    if (isUpdatingFromInitialRef.current) {
+      return;
+    }
+    
+    // 🔹 التحقق من وجود تغيير فعلي في selectedFilters
+    const normalizeFilters = (filters) => {
+      if (!filters || typeof filters !== 'object' || Array.isArray(filters)) {
+        return '{}';
+      }
+      const sorted = Object.keys(filters).sort().reduce((acc, key) => {
+        const value = filters[key];
+        if (Array.isArray(value)) {
+          const filteredArray = value.filter(v => v != null && v !== '');
+          acc[key] = filteredArray.length > 0 ? [...filteredArray].sort() : [];
+        } else if (value != null && value !== '') {
+          acc[key] = value;
+        }
+        return acc;
+      }, {});
+      return JSON.stringify(sorted);
+    };
+    
+    const currentSelectedFiltersStr = normalizeFilters(selectedFilters);
+    const prevSelectedFiltersStr = prevSelectedFiltersRef.current;
+    
+    // 🔹 استدعاء onFilterChange فقط إذا تغيرت selectedFilters فعلياً
+    if (prevSelectedFiltersStr === null || currentSelectedFiltersStr !== prevSelectedFiltersStr) {
+      prevSelectedFiltersRef.current = currentSelectedFiltersStr;
+      onFilterChange(selectedFilters);
+    }
   }, [selectedFilters, onFilterChange]);
 
   // على الديسكتوب، نعرض 4 فلاتر فقط في البداية
@@ -34,20 +145,28 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
     <div className="space-y-4  w-full">
       {/* Desktop View - Flex Wrap */}
       <div className="hidden md:flex flex-wrap gap-2 items-center">
-        {visibleFilters.map(({ attribute, values }) => (
-          <Dropdown
-            key={attribute}
-            attribute={attribute}
-            values={values}
-            selected={selectedFilters[attribute] || []}
-            onChange={(newSelected) => {
-              setSelectedFilters((prev) => ({
-                ...prev,
-                [attribute]: newSelected,
-              }));
-            }}
-          />
-        ))}
+        {visibleFilters.map(({ attribute, values }) => {
+          const selectedValues = selectedFilters[attribute] || [];
+          
+          if (process.env.NODE_ENV === 'development' && attribute === 'Brand') {
+            console.log(`🔹 FilterDropdown: Rendering ${attribute} dropdown with selected:`, selectedValues);
+          }
+          
+          return (
+            <Dropdown
+              key={attribute}
+              attribute={attribute}
+              values={values}
+              selected={selectedValues}
+              onChange={(newSelected) => {
+                setSelectedFilters((prev) => ({
+                  ...prev,
+                  [attribute]: newSelected,
+                }));
+              }}
+            />
+          );
+        })}
         {hasMoreFilters && !showAllFilters && (
           <button
             onClick={() => setShowAllFilters(true)}
@@ -99,10 +218,14 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
                   ${
                     openDropdown === attribute
                       ? 'bg-gradient-to-r text-white from-gray-400 to-gray-500 shadow-lg transform scale-105'
+                      : attribute === 'Brand' && selectedFilters[attribute]?.length > 0
+                      ? 'bg-yellow-400 text-yellow-900 border border-yellow-500 shadow-md hover:bg-yellow-300'
                       : 'bg-white text-gray-700 shadow-md hover:shadow-lg hover:bg-gray-50'
                   }`}
               >
-                <span>{attribute} {selectedFilters[attribute]?.length > 0 && `(${selectedFilters[attribute].length})`}</span>
+                <span>
+                  {attribute} {selectedFilters[attribute]?.length > 0 && `(${selectedFilters[attribute].length})`}
+                </span>
                 <ChevronDownIcon 
                   className={`w-4 h-4 transition-transform duration-200 ${
                     openDropdown === attribute ? 'rotate-180' : ''
@@ -120,6 +243,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
               attribute={openDropdown}
               values={attributeValues.find(a => a.attribute === openDropdown)?.values || []}
               selected={selectedFilters[openDropdown] || []}
+              key={openDropdown}
               onChange={(newSelected) => {
                 setSelectedFilters((prev) => ({
                   ...prev,
@@ -166,19 +290,81 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
 
 function Dropdown({ attribute, values, selected, onChange, isMobile = false, onClose }) {
   const { t } = useTranslation();
-  const [tempSelected, setTempSelected] = useState(selected);
+  // 🔹 تهيئة tempSelected من selected prop مباشرة
+  const [tempSelected, setTempSelected] = useState(() => {
+    return Array.isArray(selected) ? [...selected] : [];
+  });
   const dropdownRef = useRef(null);
+  const prevSelectedStrRef = useRef(null);
 
   useEffect(() => {
-    setTempSelected(selected);
-  }, [selected]);
+    // 🔹 تحويل selected إلى string للمقارنة الدقيقة
+    const normalizeSelected = (sel) => {
+      if (!Array.isArray(sel)) return '[]';
+      if (sel.length === 0) return '[]';
+      // 🔹 ترتيب المصفوفة لضمان المقارنة الصحيحة
+      return JSON.stringify([...sel].sort());
+    };
+    
+    const currentSelectedStr = normalizeSelected(selected);
+    const prevSelectedStr = prevSelectedStrRef.current;
+    
+    // 🔹 تحديث tempSelected فقط إذا تغيرت القيمة فعلياً
+    if (prevSelectedStr === null || currentSelectedStr !== prevSelectedStr) {
+      if (process.env.NODE_ENV === 'development' && attribute === 'Brand') {
+        console.log(`🔹 Dropdown (${attribute}): selected prop changed to:`, selected);
+        console.log(`🔹 Dropdown (${attribute}): Previous:`, prevSelectedStr);
+        console.log(`🔹 Dropdown (${attribute}): Current:`, currentSelectedStr);
+        console.log(`🔹 Dropdown (${attribute}): Updating tempSelected to:`, selected);
+        console.log(`🔹 Dropdown (${attribute}): selected is array:`, Array.isArray(selected));
+        console.log(`🔹 Dropdown (${attribute}): selected length:`, selected?.length);
+        console.log(`🔹 Dropdown (${attribute}): isMobile:`, isMobile);
+      }
+      // 🔹 تحديث tempSelected مباشرة - استخدام Array.isArray للتحقق
+      if (Array.isArray(selected)) {
+        setTempSelected([...selected]);
+      } else {
+        setTempSelected([]);
+      }
+      prevSelectedStrRef.current = currentSelectedStr;
+    }
+  }, [selected, attribute, isMobile]);
 
+  // 🔹 useEffect إضافي للتأكد من تحديث tempSelected عند mount أو re-mount (خاصة في وضع الجوال)
+  // 🔹 استخدام useRef لتتبع tempSelected لتجنب dependency loop
+  const tempSelectedRef = useRef(tempSelected);
+  tempSelectedRef.current = tempSelected;
+  
   useEffect(() => {
+    // 🔹 التأكد من تحديث tempSelected من selected prop عند mount أو عند تغيير selected
+    // 🔹 هذا مهم خاصة في وضع الجوال عند فتح الـ dropdown
+    if (Array.isArray(selected)) {
+      const currentSelectedStr = JSON.stringify([...selected].sort());
+      const tempSelectedStr = JSON.stringify([...tempSelectedRef.current].sort());
+      
+      // 🔹 تحديث tempSelected إذا كان مختلفاً عن selected
+      if (currentSelectedStr !== tempSelectedStr) {
+        if (process.env.NODE_ENV === 'development' && attribute === 'Brand') {
+          console.log(`🔹 Dropdown (${attribute}): Syncing tempSelected with selected`);
+          console.log(`🔹 Dropdown (${attribute}): selected:`, selected);
+          console.log(`🔹 Dropdown (${attribute}): tempSelected:`, tempSelectedRef.current);
+          console.log(`🔹 Dropdown (${attribute}): isMobile:`, isMobile);
+        }
+        setTempSelected([...selected]);
+      }
+    } else if (tempSelectedRef.current.length > 0) {
+      // 🔹 إذا كان selected ليس array و tempSelected يحتوي على قيم، امسح tempSelected
+      setTempSelected([]);
+    }
+  }, [selected, attribute, isMobile]); // 🔹 يعمل عند تغيير selected أو attribute أو isMobile
+
+  // 🔹 إزالة handleClickOutside في وضع الجوال - الـ dropdown يغلق فقط عند الضغط على X أو على زر الـ dropdown نفسه
+  useEffect(() => {
+    // فقط في وضع الويب (Desktop)
+    if (isMobile) return;
+    
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        if (isMobile && onClose) {
-          onClose();
-        }
         setTempSelected(selected);
       }
     }
@@ -188,20 +374,14 @@ function Dropdown({ attribute, values, selected, onChange, isMobile = false, onC
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('touchstart', handleClickOutside);
     };
-  }, [selected, isMobile, onClose])
+  }, [selected, isMobile])
   const toggleOption = (value) => {
     const updated = tempSelected.includes(value)
       ? tempSelected.filter((v) => v !== value)
       : [...tempSelected, value];
     setTempSelected(updated);
+    // 🔹 في وضع الجوال، التغييرات تحدث فوراً (مثل وضع الويب)
     onChange(updated);
-  };
-
-  const confirmSelection = () => {
-    setTempSelected(tempSelected);
-    if (isMobile && onClose) {
-      onClose();
-    }
   };
 
   // على الموبايل، نعرض القائمة مباشرة بدون dropdown
@@ -240,14 +420,7 @@ function Dropdown({ attribute, values, selected, onChange, isMobile = false, onC
             </label>
           ))}
         </div>
-        <div className="flex justify-end mt-4">
-          <button
-            onClick={confirmSelection}
-            className="px-3 py-1 text-sm bg-black text-white hover:bg-gray-900 transition "
-          >
-            {t("Done ✔")}
-          </button>
-        </div>
+        {/* 🔹 إزالة زر "Done" - التغييرات تحدث فوراً في وضع الجوال */}
       </div>
     );
   }
@@ -291,7 +464,11 @@ function Dropdown({ attribute, values, selected, onChange, isMobile = false, onC
       <div className="relative w-full sm:w-64 md:w-48" ref={dropdownRef}>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex justify-between items-center cursor-pointer px-3 py-2 text-sm text-neutral-700 font-medium bg-white border border-gray-300 shadow hover:bg-gray-50 focus:outline-none "
+          className={`w-full flex justify-between items-center cursor-pointer px-3 py-2 text-sm font-medium border shadow hover:bg-gray-50 focus:outline-none transition-all ${
+            attribute === 'Brand' && selected.length > 0
+              ? 'bg-yellow-400 text-yellow-900 border-yellow-500 hover:bg-yellow-300'
+              : 'bg-white text-neutral-700 border-gray-300'
+          }`}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
         >

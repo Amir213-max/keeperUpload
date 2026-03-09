@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { FaFacebook, FaInstagram, FaYoutube, FaTiktok, FaWhatsapp } from 'react-icons/fa';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -13,6 +13,8 @@ export default function Footer() {
   const [translatedFooterTexts, setTranslatedFooterTexts] = useState([]);
   const [socialLinks, setSocialLinks] = useState([]);
   const pathname = usePathname();
+  const prevFooterTextsRef = useRef(null);
+  const prevLangRef = useRef(null);
 
   useEffect(() => {
     async function fetchSettings() {
@@ -66,11 +68,31 @@ export default function Footer() {
 
   // ترجمة footerTexts عند تغيير اللغة
   useEffect(() => {
+    // 🔹 منع تشغيل useEffect إذا كان footerTexts فارغاً
+    if (footerTexts.length === 0) {
+      if (prevFooterTextsRef.current === null) {
+        setTranslatedFooterTexts([]);
+        prevFooterTextsRef.current = [];
+      }
+      return;
+    }
+    
+    // 🔹 التحقق من وجود تغيير فعلي في footerTexts أو lang
+    const footerTextsStr = JSON.stringify(footerTexts);
+    const prevFooterTextsStr = prevFooterTextsRef.current ? JSON.stringify(prevFooterTextsRef.current) : null;
+    const hasFooterTextsChanged = prevFooterTextsStr !== footerTextsStr;
+    const hasLangChanged = prevLangRef.current !== lang;
+    
+    // 🔹 تحديث refs فقط إذا تغيرت القيم فعلياً
+    if (!hasFooterTextsChanged && !hasLangChanged) {
+      return;
+    }
+    
     const translateFooterTexts = async () => {
-      if (footerTexts.length === 0) return;
-      
       if (lang === 'en') {
         setTranslatedFooterTexts(footerTexts);
+        prevFooterTextsRef.current = footerTexts;
+        prevLangRef.current = lang;
         return;
       }
 
@@ -99,9 +121,13 @@ export default function Footer() {
           })
         );
         setTranslatedFooterTexts(translated);
+        prevFooterTextsRef.current = footerTexts;
+        prevLangRef.current = lang;
       } catch (err) {
         console.error('Error translating footer texts:', err);
         setTranslatedFooterTexts(footerTexts);
+        prevFooterTextsRef.current = footerTexts;
+        prevLangRef.current = lang;
       }
     };
 

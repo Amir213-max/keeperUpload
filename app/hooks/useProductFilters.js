@@ -560,6 +560,11 @@ export function useProductFilters({
     if (disableUrlUpdates) return;
     if (isUpdatingUrlRef.current) return;
     
+    // 🔹 منع تحديث URL إذا كان المستخدم لم يقم بتغيير الفلاتر (لمنع restart عند انتهاء ProgressBar)
+    if (!userInitiatedChangeRef.current && !isInitialLoadRef.current) {
+      return;
+    }
+    
     const currentPathname = typeof window !== "undefined" ? window.location.pathname : pathname;
     const currentBrand = selectedBrandRef.current;
     const currentAttributes = selectedAttributesRef.current;

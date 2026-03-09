@@ -12,7 +12,7 @@ import PriceDisplay from "../components/PriceDisplay";
 import DynamicText from "../components/DynamicText";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
-import { buildPathSegmentUrl, parsePathSegments, parseBrandFromPathSegments, fromSlug } from "../lib/urlSlugHelper";
+import { buildPathSegmentUrl, buildParentPageUrl, parsePathSegments, parseBrandFromPathSegments, fromSlug } from "../lib/urlSlugHelper";
 import { useCategory } from "../contexts/CategoryContext";
 import { useProductFilters } from "../hooks/useProductFilters";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
@@ -79,6 +79,7 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
   }, [brands, setGoalkeeperGlovesBrands]);
 
   // Use unified filter hook
+  // 🔹 تعطيل تحديثات URL التلقائية لمنع restart عند انتهاء ProgressBar
   const {
     selectedBrand,
     selectedAttributes,
@@ -93,6 +94,7 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
     basePath: "/GoalkeeperGloves",
     setSelectedCategoryId,
     selectedCategoryId,
+    disableUrlUpdates: false, // 🔹 نتركه false لأننا نريد تحديث URL عند تغيير الفلاتر
   });
 
   // 🔹 Initialize filters from URL on mount (for direct access/refresh)
@@ -124,17 +126,41 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
     if (pathSegments.length > 0) {
       parsedAttrs = parsePathSegments(pathSegments, attributeValues, brands);
       if (parsedAttrs && Object.keys(parsedAttrs).length > 0) {
-        setSelectedAttributes(parsedAttrs);
+        // 🔹 إذا كان هناك Brand attribute (من brand-{brandName} في URL)، نأخذ أول براند ونضعه في selectedBrand
+        if (parsedAttrs["Brand"] && Array.isArray(parsedAttrs["Brand"]) && parsedAttrs["Brand"].length > 0) {
+          const brandFromAttr = parsedAttrs["Brand"][0];
+          setSelectedBrand(brandFromAttr);
+          // 🔹 الاحتفاظ بـ Brand في attributes لإظهاره في FilterDropdown
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 GoalkeeperClientPage: Parsed Brand from URL attributes:', brandFromAttr);
+            console.log('🔹 GoalkeeperClientPage: Setting attributes:', parsedAttrs);
+          }
+          setSelectedAttributes(parsedAttrs);
+        } else {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 GoalkeeperClientPage: Setting attributes (no Brand):', parsedAttrs);
+          }
+          setSelectedAttributes(parsedAttrs);
+        }
       }
     }
     
-    // Parse brand from path segments (for single brand only)
+    // Parse brand from path segments (for single brand only - بدون prefix)
     if (pathSegments.length > 0) {
       const parsedBrand = parseBrandFromPathSegments(pathSegments, brands, attributeValues);
       if (parsedBrand) {
         // Only set selectedBrand if Brand attribute is not set (to avoid conflict)
         if (!parsedAttrs["Brand"] || parsedAttrs["Brand"].length === 0) {
           setSelectedBrand(parsedBrand);
+          // 🔹 إضافة البراند إلى selectedAttributes["Brand"] لإظهاره في FilterDropdown
+          if (process.env.NODE_ENV === 'development') {
+            console.log('🔹 GoalkeeperClientPage: Parsed brand from URL path segments:', parsedBrand);
+            console.log('🔹 GoalkeeperClientPage: Adding Brand to attributes');
+          }
+          setSelectedAttributes((prev) => ({
+            ...prev,
+            Brand: [parsedBrand],
+          }));
         }
       }
     }
@@ -148,6 +174,15 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
           // Only set selectedBrand if Brand attribute is not set (to avoid conflict)
           if (!parsedAttrs["Brand"] || parsedAttrs["Brand"].length === 0) {
             setSelectedBrand(brandName);
+            // 🔹 إضافة البراند إلى selectedAttributes["Brand"] لإظهاره في FilterDropdown
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔹 GoalkeeperClientPage: Parsed brand from query params:', brandName);
+              console.log('🔹 GoalkeeperClientPage: Adding Brand to attributes');
+            }
+            setSelectedAttributes((prev) => ({
+              ...prev,
+              Brand: [brandName],
+            }));
           }
         }
       }
@@ -224,6 +259,9 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
   const currentProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct);
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
 
+  // 🔹 استخدام useMemo لمنع إنشاء كائن جديد في كل render (يسبب infinite loop)
+  const memoizedInitialFilters = useMemo(() => ({ ...selectedAttributes }), [selectedAttributes]);
+
   // ✅ حساب عدد الصور الإجمالي وبدء التحميل الأولي
   useEffect(() => {
     const totalImages = currentProducts.reduce((count, product) => {
@@ -274,10 +312,13 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
         // تأكد من الوصول إلى 100%
         setImageProgress(100);
         // انتظر قليلاً للتأكد من أن كل شيء تم تحميله
-        setTimeout(() => {
-          setImagesLoading(false);
-          setShowProducts(true); // عرض المنتجات بعد اكتمال التحميل
-        }, 300);
+        // 🔹 استخدام requestAnimationFrame لمنع restart الصفحة
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            setImagesLoading(false);
+            setShowProducts(true); // عرض المنتجات بعد اكتمال التحميل
+          }, 300);
+        });
       }
     }
   }, []);
@@ -302,6 +343,64 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
         <div className="hidden lg:block lg:col-span-1 bg-black h-auto">
           <Sidebar
             categories={categoriesWithProducts}
+            onSelectBrand={(brandName) => {
+              // 🔹 عند اختيار براند من الـ sidebar، نضيفه لـ selectedBrand و selectedAttributes["Brand"]
+              if (brandName) {
+                // تحديث selectedBrand أولاً
+                setSelectedBrand(brandName);
+                // إضافة البراند إلى selectedAttributes["Brand"] لإظهاره في FilterDropdown
+                const newAttributes = {
+                  ...selectedAttributes,
+                  Brand: [brandName],
+                };
+                
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('🔹 GoalkeeperClientPage: Setting brand from sidebar:', brandName);
+                  console.log('🔹 GoalkeeperClientPage: New attributes:', newAttributes);
+                }
+                
+                setSelectedAttributes(newAttributes);
+                // تحديث الـ URL باستخدام buildParentPageUrl مع selectedAttributes الجديدة
+                const newUrl = buildParentPageUrl(
+                  "/GoalkeeperGloves",
+                  newAttributes,
+                  brandName
+                );
+                if (newUrl && typeof window !== "undefined") {
+                  // 🔹 استخدام window.history.replaceState بدلاً من router.replace لمنع refresh
+                  window.history.replaceState(
+                    { ...window.history.state, as: newUrl, url: newUrl },
+                    '',
+                    newUrl
+                  );
+                }
+              } else {
+                // إلغاء التحديد
+                setSelectedBrand(null);
+                const { Brand, ...otherAttrs } = selectedAttributes;
+                
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('🔹 GoalkeeperClientPage: Clearing brand from sidebar');
+                  console.log('🔹 GoalkeeperClientPage: Remaining attributes:', otherAttrs);
+                }
+                
+                setSelectedAttributes(otherAttrs);
+                // تحديث الـ URL
+                const newUrl = buildParentPageUrl(
+                  "/GoalkeeperGloves",
+                  otherAttrs,
+                  null
+                );
+                if (newUrl && typeof window !== "undefined") {
+                  // 🔹 استخدام window.history.replaceState بدلاً من router.replace لمنع refresh
+                  window.history.replaceState(
+                    { ...window.history.state, as: newUrl, url: newUrl },
+                    '',
+                    newUrl
+                  );
+                }
+              }
+            }}
             onSelectCategory={(catId) => {
               // 🔹 استخدام جميع الـ categories للبحث (وليس فقط categoriesWithProducts)
               // هذا يسمح بالتنقل إلى subCategories من صفحات أخرى
@@ -372,7 +471,7 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
             <FilterDropdown
               attributeValues={attributeValues}
               onFilterChange={handleAttributesChange}
-              initialFilters={selectedAttributes}
+              initialFilters={memoizedInitialFilters}
             />
           </div>
 

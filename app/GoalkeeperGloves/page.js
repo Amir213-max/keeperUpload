@@ -59,13 +59,24 @@ export default async function Page() {
     }
   });
 
+  // 🟢 تجهيز الـ Brands
+  const brands = [...new Set(products.map((p) => p.brand_name).filter(Boolean))];
+
+  // 🔹 دمج Brand مع attributeMap إذا كان موجوداً، أو إضافته إذا لم يكن موجوداً
+  if (brands.length > 0) {
+    if (attributeMap["Brand"]) {
+      // إذا كان Brand موجوداً بالفعل، دمج القيم
+      brands.forEach(brand => attributeMap["Brand"].add(brand));
+    } else {
+      // إذا لم يكن موجوداً، إضافته
+      attributeMap["Brand"] = new Set(brands);
+    }
+  }
+
   const attributeValues = Object.entries(attributeMap).map(([attribute, values]) => ({
     attribute,
     values: Array.from(values),
   }));
-
-  // 🟢 تجهيز الـ Brands
-  const brands = [...new Set(products.map((p) => p.brand_name).filter(Boolean))];
 
   return (
     <Suspense fallback={<Loader />}>
