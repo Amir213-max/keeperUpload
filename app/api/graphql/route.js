@@ -1,20 +1,39 @@
 import { NextResponse } from "next/server";
-import { GraphQLClient } from "graphql-request";
 
 /**
  * GraphQL API Proxy Route
- * 
+ *
  * Why this proxy is required:
- * - CORS: The GraphQL endpoint (https://keepersport.store/graphql) doesn't allow
- *   direct browser requests due to CORS restrictions
- * - Security: Keeps the GraphQL endpoint URL and any sensitive headers server-side
- * - Performance: Server-to-server requests are faster and more reliable
- * 
- * This route acts as a proxy between client components and the GraphQL API,
- * allowing client components to make requests without CORS issues.
+ * - CORS: The GraphQL endpoint doesn't allow direct browser requests
+ * - Security: Keeps the GraphQL endpoint URL server-side
+ *
+ * Note: We use `fetch` instead of `graphql-request` so we can merge a small
+ * compatibility payload for Laravel mutations that validate `$request` keys
+ * at the JSON root (e.g. changePassword) while the GraphQL variables live
+ * under `variables.input`.
  */
 
 const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || "https://keepersport.store/graphql";
+
+function buildUpstreamPayload(query, variables) {
+  const vars = variables && typeof variables === "object" ? variables : {};
+  const payload = { query, variables: vars };
+
+  const input = vars.input;
+  if (
+    input &&
+    typeof input === "object" &&
+    Object.prototype.hasOwnProperty.call(input, "current_password") &&
+    Object.prototype.hasOwnProperty.call(input, "password") &&
+    Object.prototype.hasOwnProperty.call(input, "password_confirmation")
+  ) {
+    payload.current_password = input.current_password;
+    payload.password = input.password;
+    payload.password_confirmation = input.password_confirmation;
+  }
+
+  return payload;
+}
 
 export async function POST(request) {
   try {
@@ -22,34 +41,52 @@ export async function POST(request) {
     const { query, variables, headers = {} } = body;
 
     if (!query) {
+      return NextResponse.json({ error: "Query is required" }, { status: 400 });
+    }
+
+    const upstreamBody = buildUpstreamPayload(query, variables);
+
+    const res = await fetch(GRAPHQL_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...headers,
+      },
+      body: JSON.stringify(upstreamBody),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (Array.isArray(json.errors) && json.errors.length > 0) {
+      const msg = json.errors.map((e) => e.message).filter(Boolean).join("; ");
+      const status = res.status >= 400 ? res.status : 422;
       return NextResponse.json(
-        { error: "Query is required" },
-        { status: 400 }
+        {
+          error: msg,
+          errors: json.errors,
+        },
+        { status }
       );
     }
 
-    // Create GraphQL client for this request
-    const client = new GraphQLClient(GRAPHQL_ENDPOINT, {
-      headers: {
-        "Content-Type": "application/json",
-        ...headers,
-      },
-    });
+    if (!res.ok) {
+      return NextResponse.json(
+        {
+          error: json.message || json.error || `GraphQL request failed: ${res.statusText}`,
+        },
+        { status: res.status }
+      );
+    }
 
-    // Execute the GraphQL request
-    const data = await client.request(query, variables || {});
-
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: json.data });
   } catch (error) {
     console.error("GraphQL Proxy Error:", error);
-    
-    // Handle GraphQL errors properly
+
     const statusCode = error.response?.status || error.statusCode || 500;
     const errorMessage = error.message || "GraphQL request failed";
-    
-    // Extract GraphQL errors if available
     const graphqlErrors = error.response?.errors || error.errors;
-    
+
     return NextResponse.json(
       {
         error: errorMessage,
@@ -61,11 +98,9 @@ export async function POST(request) {
   }
 }
 
-// Support GET for simple queries (optional)
-export async function GET(request) {
+export async function GET() {
   return NextResponse.json(
-    { error: "Use POST method for GraphQL requests" },
+    { error: "Use POST method for GraphQL" },
     { status: 405 }
   );
 }
-

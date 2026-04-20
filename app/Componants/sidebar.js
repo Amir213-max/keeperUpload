@@ -1,29 +1,96 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { FaShoppingCart, FaUser } from 'react-icons/fa';
 import { ChevronDown, ChevronRight, X, ArrowLeft } from "lucide-react";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
-import { Root_CATEGORIES, GET_CATEGORIES_ONLY_QUERY, PRODUCTS_BY_CATEGORY_QUERY } from "../lib/queries";
+import {
+  Root_CATEGORIES,
+  MAIN_ROOT_CATEGORIES_QUERY,
+  GET_CATEGORIES_ONLY_QUERY,
+  PRODUCTS_WITH_FILTERS_LISTING_QUERY,
+} from "../lib/queries";
+import { fetchClientProductsByVertical } from "../lib/clientCategoryListing";
 import { motion, AnimatePresence } from "framer-motion";
 import CartSidebar from "./CartSidebar";
 import Image from "next/image";
 // import { useChat } from "../contexts/ChatContext";
 import { useTranslation } from "../contexts/TranslationContext";
 import { useAuth } from "../contexts/AuthContext";
+import { usePublicNavSettings } from "../contexts/PublicNavSettingsContext";
+import { SITE_LOGO_FALLBACK_URL } from "../lib/siteLogoFromSettings";
 import DynamicText from "../components/DynamicText";
 import { buildParentPageUrl, toSlug } from "../lib/urlSlugHelper";
 
+function getParentRouteFromCategoryName(name) {
+  let nameStr = "";
+  try {
+    const parsed = JSON.parse(name || "{}");
+    nameStr = parsed.en || parsed.ar || name || "";
+  } catch {
+    nameStr = name || "";
+  }
+  const normalized = nameStr.toLowerCase().trim();
+  if (normalized.includes("goalkeeper") && normalized.includes("gloves")) return "/GoalkeeperGloves";
+  if (normalized.includes("football") && normalized.includes("boots")) return "/FootballBoots";
+  if (normalized.includes("goalkeeper") && normalized.includes("apparel")) return "/Goalkeeperapparel";
+  if (normalized.includes("goalkeeper") && normalized.includes("equipment")) return "/Goalkeeperequipment";
+  if (normalized.includes("teamsport")) return "/Teamsport";
+  if (normalized.includes("sale")) return "/Sale";
+  return null;
+}
+
+function isGoalkeeperGlovesCategoryName(name) {
+  if (!name) return false;
+  let nameStr = "";
+  try {
+    const parsed = JSON.parse(typeof name === "string" ? name : "{}");
+    nameStr = parsed.en || parsed.ar || name || "";
+  } catch {
+    nameStr = typeof name === "string" ? name : "";
+  }
+  const n = nameStr.toLowerCase().trim();
+  return n.includes("goalkeeper") && n.includes("gloves");
+}
+
+/** Flatten main roots + nested subCategories for slug/id lookup (handleSubcategoryClick). */
+function flattenMainNavCategories(mains) {
+  const list = [];
+  for (const m of mains || []) {
+    list.push({
+      id: m.id,
+      name: m.name,
+      slug: m.slug,
+      order: m.order,
+      parent: null,
+      subCategories: m.subCategories,
+      is_main: m.is_main,
+      show_brands_in_menu: m.show_brands_in_menu,
+    });
+    for (const s of m.subCategories || []) {
+      list.push({
+        ...s,
+        parent: { id: m.id, name: m.name, order: m.order ?? 0 },
+      });
+    }
+  }
+  return list;
+}
+
 export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: externalCategories, onSelectCategory: externalOnSelectCategory, brands: externalBrands = [], onSelectBrand: externalOnSelectBrand }) {
+  const { siteLogoUrl } = usePublicNavSettings();
+  const logoSrc = siteLogoUrl || SITE_LOGO_FALLBACK_URL;
   const [categories, setCategories] = useState([]);
+  const [mainNavRoots, setMainNavRoots] = useState([]);
+  /** "main" = mainRootCategories / is_main hierarchy; "legacy" = old parentCategories list */
+  const [navSource, setNavSource] = useState("legacy");
   const [cartOpen, setCartOpen] = useState(false);
   const [openParentId, setOpenParentId] = useState(null);
   const [selectedParentForDetail, setSelectedParentForDetail] = useState(null);
   const [showParentDetail, setShowParentDetail] = useState(false);
   const [goalkeeperGlovesBrands, setGoalkeeperGlovesBrands] = useState([]);
-  const lastFetchedParentIdRef = useRef(null);
   const router = useRouter();
   const pathname = usePathname();
   // const { openChat } = useChat();
@@ -37,26 +104,71 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
       : null;
   }, [externalCategories]);
 
-  // 🔹 جلب جميع الـ categories من الـ API دائماً للـ Sidebar
-  // حتى لو كانت هناك externalCategories (محدودة للصفحة الحالية)
-  // الـ Sidebar يحتاج إلى جميع الـ categories لعرض جميع الـ parent categories
+  // 🔹 جلب الجذور الرئيسية (mainRootCategories / is_main) ثم fallback لـ rootCategories الكاملة
   useEffect(() => {
-    const fetchAllCategories = async () => {
+    let cancelled = false;
+    const run = async () => {
       try {
-        // Use API route proxy to avoid CORS issues
+        const mainData = await graphqlRequest(MAIN_ROOT_CATEGORIES_QUERY);
+        if (cancelled) return;
+        const mains = mainData?.mainRootCategories || [];
+        if (mains.length > 0) {
+          const sorted = [...mains].sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+          const hasIsMainFlag = sorted.some((m) => typeof m.is_main === "boolean");
+          const rootsOnlyMain = hasIsMainFlag
+            ? sorted.filter((m) => m.is_main === true)
+            : sorted;
+          if (rootsOnlyMain.length > 0) {
+            setMainNavRoots(rootsOnlyMain);
+            setCategories(flattenMainNavCategories(rootsOnlyMain));
+            setNavSource("main");
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("❌ Error fetching mainRootCategories:", e);
+      }
+
+      try {
         const data = await graphqlRequest(Root_CATEGORIES);
-        const allCategories = data?.rootCategories || [];
-        setCategories(allCategories);
+        if (cancelled) return;
+        const all = data?.rootCategories || [];
+        const mainsFromAll = all
+          .filter((c) => !c.parent && c.is_main === true)
+          .map((m) => ({
+            ...m,
+            subCategories: all
+              .filter((sub) => sub.parent && String(sub.parent.id) === String(m.id))
+              .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999)),
+          }))
+          .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+
+        if (mainsFromAll.length > 0) {
+          setMainNavRoots(mainsFromAll);
+          setCategories(all);
+          setNavSource("main");
+          return;
+        }
+
+        setCategories(all.length > 0 ? all : externalCategoriesMemo || []);
+        setMainNavRoots([]);
+        setNavSource("legacy");
       } catch (error) {
         console.error("❌ Error fetching categories:", error);
-        // Fallback: استخدام externalCategories إذا فشل الـ API
-        if (externalCategoriesMemo) {
+        if (!cancelled && externalCategoriesMemo) {
           setCategories(externalCategoriesMemo);
+        }
+        if (!cancelled) {
+          setMainNavRoots([]);
+          setNavSource("legacy");
         }
       }
     };
-    fetchAllCategories();
-  }, []); // 🔹 جلب مرة واحدة فقط عند تحميل الـ Sidebar
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [externalCategoriesMemo]);
 
   // 🔹 جلب rootCategories (الرئيسية التي ليس لها parent) - نفس منطق الموبايل
   const rootCategories = categories.filter((cat) => !cat.parent);
@@ -72,11 +184,21 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
         return acc;
       }, []);
     
-    // 🔹 فلترة: عرض فقط الـ parent categories التي لديها subcategories فعلاً
-    const filtered = parents.filter(item => {
+    // 🔹 فلترة: فقط جذور is_main ولديها subcategories (الجذر من صف الأب في القائمة المسطّحة)
+    const filtered = parents.filter((item) => {
       const parent = item.parent;
-      const subCategories = categories.filter(sub => sub.parent?.id === parent.id);
-      return subCategories.length > 0; // فقط التي لديها subcategories
+      const subCategories = categories.filter((sub) => sub.parent?.id === parent.id);
+      if (subCategories.length === 0) return false;
+      const parentRoot = categories.find(
+        (c) => !c.parent && String(c.id) === String(parent.id)
+      );
+      if (parentRoot && typeof parentRoot.is_main === "boolean") {
+        return parentRoot.is_main === true;
+      }
+      if (typeof parent?.is_main === "boolean") {
+        return parent.is_main === true;
+      }
+      return false;
     });
     
     // 🔹 ترتيب حسب order (0 أولاً، ثم 1، وهكذا)
@@ -87,40 +209,61 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
     });
   }, [categories]);
 
-  // 🔹 دالة لتحويل route إلى parent category ID
-  const getParentIdFromRoute = useCallback((route) => {
-    // Mapping بين الـ routes والـ parent category names
-    const routeToParentName = {
-      '/GoalkeeperGloves': 'goalkeeper gloves',
-      '/FootballBoots': 'football boots',
-      '/Goalkeeperapparel': 'goalkeeper apparel',
-      '/Goalkeeperequipment': 'goalkeeper equipment',
-      '/Teamsport': 'teamsport',
-      '/Sale': 'sale',
-    };
-
-    const parentName = routeToParentName[route];
-    if (!parentName) return null;
-
-    // البحث عن parent category بناءً على الاسم
-    const parentCategory = parentCategories.find(item => {
-      const parent = item.parent;
-      if (!parent?.name) return false;
-      
-      let nameStr = '';
-      try {
-        const parsed = JSON.parse(parent.name || '{}');
-        nameStr = parsed.en || parsed.ar || parent.name || '';
-      } catch {
-        nameStr = parent.name || '';
+  // 🔹 دالة لتحويل route إلى parent category ID (main nav أو legacy)
+  const getParentIdFromRoute = useCallback(
+    (route) => {
+      if (!route) return null;
+      const verticals = [
+        "/GoalkeeperGloves",
+        "/FootballBoots",
+        "/Goalkeeperapparel",
+        "/Goalkeeperequipment",
+        "/Teamsport",
+        "/Sale",
+      ];
+      let matched = null;
+      for (const p of verticals) {
+        if (route === p || route.startsWith(`${p}/`)) {
+          matched = p;
+          break;
+        }
       }
-      
-      const normalized = nameStr.toLowerCase().trim();
-      return normalized.includes(parentName.toLowerCase());
-    });
+      if (matched && mainNavRoots.length > 0) {
+        for (const m of mainNavRoots) {
+          if (getParentRouteFromCategoryName(m.name) === matched) return m.id;
+        }
+      }
 
-    return parentCategory?.parent?.id || null;
-  }, [parentCategories]);
+      const routeToParentName = {
+        "/GoalkeeperGloves": "goalkeeper gloves",
+        "/FootballBoots": "football boots",
+        "/Goalkeeperapparel": "goalkeeper apparel",
+        "/Goalkeeperequipment": "goalkeeper equipment",
+        "/Teamsport": "teamsport",
+        "/Sale": "sale",
+      };
+      const key = matched || route;
+      const parentName = routeToParentName[key];
+      if (!parentName) return null;
+
+      const parentCategory = parentCategories.find((item) => {
+        const parent = item.parent;
+        if (!parent?.name) return false;
+        let nameStr = "";
+        try {
+          const parsed = JSON.parse(parent.name || "{}");
+          nameStr = parsed.en || parsed.ar || parent.name || "";
+        } catch {
+          nameStr = parent.name || "";
+        }
+        const normalized = nameStr.toLowerCase().trim();
+        return normalized.includes(parentName.toLowerCase());
+      });
+
+      return parentCategory?.parent?.id || null;
+    },
+    [mainNavRoots, parentCategories]
+  );
 
   // 🔹 إعادة تعيين حالة parent detail عند إغلاق الـ drawer
   useEffect(() => {
@@ -132,49 +275,32 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
 
   // 🔹 فتح الـ subcategories تلقائياً عند تحميل الصفحة بناءً على الـ URL
   useEffect(() => {
-    if (!pathname || !parentCategories.length) return;
+    if (!pathname) return;
 
-    // التحقق من localStorage أولاً (إذا تم التنقل من sidebar)
-    const savedParentId = localStorage.getItem('sidebar_open_parent_id');
+    const savedParentId = localStorage.getItem("sidebar_open_parent_id");
     if (savedParentId) {
-      const parentId = savedParentId;
-      const exists = parentCategories.find(item => String(item.parent?.id) === String(parentId));
-      if (exists) {
-        setOpenParentId(parentId);
-        localStorage.removeItem('sidebar_open_parent_id'); // تنظيف بعد الاستخدام
-      return;
-    }
+      const inMain = mainNavRoots.some((m) => String(m.id) === String(savedParentId));
+      const inLegacy = parentCategories.some((item) => String(item.parent?.id) === String(savedParentId));
+      if (inMain || inLegacy) {
+        setOpenParentId(savedParentId);
+        localStorage.removeItem("sidebar_open_parent_id");
+        return;
+      }
     }
 
-    // التحقق من الـ URL الحالي
     const parentId = getParentIdFromRoute(pathname);
-    if (parentId) {
-      setOpenParentId(parentId);
-    }
-  }, [pathname, parentCategories, getParentIdFromRoute]);
+    if (parentId) setOpenParentId(parentId);
+  }, [pathname, parentCategories, mainNavRoots, getParentIdFromRoute]);
 
-  // 🔹 جلب البراندات الخاصة بـ GoalkeeperGloves من API مباشرة
+  // Brands for Goalkeeper Gloves — Query.productsWithFilters (no rootCategory.products)
   useEffect(() => {
     const fetchBrands = async () => {
       try {
-        const GOALKEEPER_GLOVES_CATEGORY_ID = "17";
-        const data = await graphqlRequest(PRODUCTS_BY_CATEGORY_QUERY, { categoryId: GOALKEEPER_GLOVES_CATEGORY_ID });
-        
-        let products = data?.rootCategory?.products || [];
-        if (data?.rootCategory?.subCategories) {
-          data.rootCategory.subCategories.forEach((sub) => {
-            if (sub.products) {
-              products = [...products, ...sub.products];
-            }
-          });
-        }
-
-        // استخراج البراندات من المنتجات
+        const products = await fetchClientProductsByVertical("goalkeeperGloves", { limit: 96 });
         const brandsList = [...new Set(products.map((p) => p.brand_name).filter(Boolean))];
         setGoalkeeperGlovesBrands(brandsList);
       } catch (error) {
         console.error("❌ Error fetching brands for GoalkeeperGloves:", error);
-        // استخدام البراندات من prop كـ fallback
         if (externalBrands && externalBrands.length > 0) {
           setGoalkeeperGlovesBrands(externalBrands);
         }
@@ -182,47 +308,77 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
     };
 
     fetchBrands();
-  }, []); // 🔹 جلب مرة واحدة فقط عند تحميل الـ Sidebar
+  }, []);
 
-    // 🔹 دالة لتحويل اسم الـ category إلى route رئيسي
-    const getParentRoute = (name) => {
-      let nameStr = '';
-      
-      // معالجة الـ name (قد يكون JSON string أو string عادي)
-      try {
-        const parsed = JSON.parse(name || '{}');
-        nameStr = parsed.en || parsed.ar || name || '';
-      } catch {
-        nameStr = name || '';
-      }
+  const getParentRoute = (name) => getParentRouteFromCategoryName(name);
 
-      // Normalize الاسم (إزالة المسافات الزائدة وتحويل لحروف صغيرة)
-      const normalized = nameStr.toLowerCase().trim();
+  // 🔹 التنقل لصفحة الـ parent (زر "عرض الكل" / جذر بلا فرعيات)
+  const handleShowAllClick = (parentId, parentName) => {
+    const route = getParentRoute(parentName);
 
-      // Mapping بين الأسماء والـ routes الرئيسية
-      if (normalized.includes('goalkeeper') && normalized.includes('gloves')) {
-        return '/GoalkeeperGloves';
-      }
-      if (normalized.includes('football') && normalized.includes('boots')) {
-        return '/FootballBoots';
-      }
-      if (normalized.includes('goalkeeper') && normalized.includes('apparel')) {
-        return '/Goalkeeperapparel';
-      }
-      if (normalized.includes('goalkeeper') && normalized.includes('equipment')) {
-        return '/Goalkeeperequipment';
-      }
-      if (normalized.includes('teamsport')) {
-        return '/Teamsport';
-      }
-      if (normalized.includes('sale')) {
-        return '/Sale';
+    if (route) {
+      localStorage.setItem("sidebar_open_parent_id", String(parentId));
+
+      const parentRoutes = [
+        "/GoalkeeperGloves",
+        "/FootballBoots",
+        "/Goalkeeperapparel",
+        "/Goalkeeperequipment",
+        "/Teamsport",
+        "/Sale",
+      ];
+
+      const isSubcategoryPage = pathname.startsWith("/products/");
+      const isCurrentParentPage = parentRoutes.some(
+        (parentRoute) => pathname === parentRoute || pathname.startsWith(`${parentRoute}/`)
+      );
+      const isSameParentPage = pathname === route || pathname.startsWith(`${route}/`);
+
+      if (isSubcategoryPage || isSameParentPage || (isCurrentParentPage && pathname !== route)) {
+        window.location.replace(route);
+      } else {
+        window.location.replace(route);
       }
 
-      return null;
-    };
+      setShowParentDetail(false);
+      setSelectedParentForDetail(null);
+      if (setIsOpen) setIsOpen(false);
+    } else {
+      const parentCategory = categories.find(
+        (cat) => String(cat.id) === String(parentId) || cat.id === parentId
+      );
+
+      if (parentCategory?.slug) {
+        const slug = encodeURIComponent(parentCategory.slug);
+        router.push(`/products/${slug}`, { scroll: false });
+        setShowParentDetail(false);
+        setSelectedParentForDetail(null);
+        if (setIsOpen) setIsOpen(false);
+      } else {
+        console.warn("⚠️ Could not navigate to parent category:", parentId, parentName);
+        setShowParentDetail(false);
+        setSelectedParentForDetail(null);
+      }
+    }
+  };
 
   const handleParentClick = (parentId, parentName, event) => {
+    if (navSource === "main") {
+      const main = mainNavRoots.find((m) => String(m.id) === String(parentId));
+      if (!main) return;
+      const subs = main.subCategories || [];
+      const showGkBrands =
+        isGoalkeeperGlovesCategoryName(main.name) &&
+        goalkeeperGlovesBrands.length > 0 &&
+        main.show_brands_in_menu !== false;
+      if (subs.length === 0 && !showGkBrands) {
+        handleShowAllClick(parentId, main.name);
+        return;
+      }
+      setOpenParentId((prev) => (String(prev) === String(parentId) ? null : parentId));
+      return;
+    }
+
     // 🔹 التحقق من وضع الجوال (الـ drawer مفتوح فقط على الجوال بسبب lg:hidden)
     // إذا كان isOpen = true، فهذا يعني أننا في وضع الجوال
     const isMobile = isOpen;
@@ -326,57 +482,6 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
     }
   };
 
-  // 🔹 دالة للتنقل إلى صفحة الـ parent (لزر "Show all")
-  const handleShowAllClick = (parentId, parentName) => {
-    // استخدام parentName مباشرة لأن getParentRoute يحتاج فقط الاسم
-    const route = getParentRoute(parentName);
-
-    if (route) {
-      localStorage.setItem('sidebar_open_parent_id', String(parentId));
-      
-      const parentRoutes = [
-        '/GoalkeeperGloves',
-        '/FootballBoots',
-        '/Goalkeeperapparel',
-        '/Goalkeeperequipment',
-        '/Teamsport',
-        '/Sale'
-      ];
-      
-      const isSubcategoryPage = pathname.startsWith('/products/');
-      const isCurrentParentPage = parentRoutes.some(parentRoute => pathname === parentRoute || pathname.startsWith(parentRoute + '/'));
-      const isSameParentPage = pathname === route || pathname.startsWith(route + '/');
-      
-      if (isSubcategoryPage || isSameParentPage || (isCurrentParentPage && pathname !== route)) {
-        window.location.replace(route);
-      } else {
-        window.location.replace(route);
-      }
-      
-      setShowParentDetail(false);
-      setSelectedParentForDetail(null);
-      if (setIsOpen) setIsOpen(false);
-    } else {
-      // Fallback: البحث عن parent category في categories للوصول للـ slug
-      const parentCategory = categories.find((cat) => {
-        return String(cat.id) === String(parentId) || cat.id === parentId;
-      });
-      
-      if (parentCategory?.slug) {
-        const slug = encodeURIComponent(parentCategory.slug);
-        router.push(`/products/${slug}`, { scroll: false });
-        setShowParentDetail(false);
-        setSelectedParentForDetail(null);
-        if (setIsOpen) setIsOpen(false);
-      } else {
-        console.warn("⚠️ Could not navigate to parent category:", parentId, parentName);
-        // إعادة تعيين الحالة حتى لو فشل التنقل
-        setShowParentDetail(false);
-        setSelectedParentForDetail(null);
-      }
-    }
-  };
-
   // 🔹 Handler للضغط على براند
   const handleBrandClick = useCallback((brandName) => {
     if (!brandName) return;
@@ -401,39 +506,42 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
 
   // 🔹 Handler لفتح Goalkeeper Gloves في ParentDetailView (في وضع الجوال)
   const handleShowGoalkeeperGlovesDetail = useCallback(() => {
-    // 🔹 البحث عن Goalkeeper Gloves في parentCategories
-    const goalkeeperGlovesParent = parentCategories.find(item => {
+    if (navSource === "main" && mainNavRoots.length > 0) {
+      const gk = mainNavRoots.find((m) => isGoalkeeperGlovesCategoryName(m.name));
+      if (gk) {
+        setOpenParentId(String(gk.id));
+        return;
+      }
+    }
+
+    const goalkeeperGlovesParent = parentCategories.find((item) => {
       const parent = item.parent;
       if (!parent?.name) return false;
-      
-      let nameStr = '';
+      let nameStr = "";
       try {
-        const parsed = JSON.parse(parent.name || '{}');
-        nameStr = parsed.en || parsed.ar || parent.name || '';
+        const parsed = JSON.parse(parent.name || "{}");
+        nameStr = parsed.en || parsed.ar || parent.name || "";
       } catch {
-        nameStr = parent.name || '';
+        nameStr = parent.name || "";
       }
-      
       const normalized = nameStr.toLowerCase().trim();
-      return normalized.includes('goalkeeper') && normalized.includes('gloves');
+      return normalized.includes("goalkeeper") && normalized.includes("gloves");
     });
-    
+
     if (goalkeeperGlovesParent) {
       setSelectedParentForDetail(goalkeeperGlovesParent);
       setShowParentDetail(true);
     } else {
-      // 🔹 إذا لم نجده في parentCategories، إنشاء selectedParent object جديد
-      const goalkeeperGlovesName = JSON.stringify({ en: "Goalkeeper Gloves", ar: "قفازات حارس المرمى" });
-      const fakeParent = {
-        parent: {
-          id: 'goalkeeper-gloves',
-          name: goalkeeperGlovesName,
-        }
-      };
-      setSelectedParentForDetail(fakeParent);
+      const goalkeeperGlovesName = JSON.stringify({
+        en: "Goalkeeper Gloves",
+        ar: "قفازات حارس المرمى",
+      });
+      setSelectedParentForDetail({
+        parent: { id: "goalkeeper-gloves", name: goalkeeperGlovesName },
+      });
       setShowParentDetail(true);
     }
-  }, [parentCategories]);
+  }, [navSource, mainNavRoots, parentCategories]);
 
   // دالة التنقل للـ Products مع التأكد من setIsOpen
   const handleSubcategoryClick = (subId) => {
@@ -481,11 +589,14 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
       {/* Sidebar للشاشات الكبيرة - يعرض parentCategories مع subcategories (نفس منطق الموبايل) */}
       <aside className={`hidden lg:block bg-black text-white w-full h-screen py-4 px-3 font-sans overflow-y-auto ${isRTL ? "rtl" : "ltr"}`}>
         <SidebarContent
+          navSource={navSource}
+          mainNavRoots={mainNavRoots}
           parentCategories={parentCategories}
           categories={categories}
           openParentId={openParentId}
           handleParentClick={handleParentClick}
-          onSelectCategory={handleSubcategoryClick} // Desktop safe
+          onSelectCategory={handleSubcategoryClick}
+          onShowAllClick={handleShowAllClick}
           goalkeeperGlovesBrands={goalkeeperGlovesBrands}
           onSelectBrand={handleBrandClick}
           isOpen={false}
@@ -568,11 +679,14 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
                       className="absolute inset-0"
                     >
                       <SidebarContent
+                        navSource={navSource}
+                        mainNavRoots={mainNavRoots}
                         parentCategories={parentCategories}
                         categories={categories}
                         openParentId={openParentId}
                         handleParentClick={handleParentClick}
-                        onSelectCategory={handleSubcategoryClick} // Drawer safe
+                        onSelectCategory={handleSubcategoryClick}
+                        onShowAllClick={handleShowAllClick}
                         goalkeeperGlovesBrands={goalkeeperGlovesBrands}
                         onSelectBrand={handleBrandClick}
                         isOpen={isOpen}
@@ -590,12 +704,14 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
                 <div className={`flex ${isRTL ? "flex-row-reverse justify-center" : "justify-between"} items-center w-full px-3 gap-4`}>
                   <Link href="/">
                     <Image
-                      src="https://static-assets.keepersport.net/dist/82d4dde2fe42e8e4fbfc.svg"
-                      alt="LOGO"
-                      width={30}
-                      height={30}
-                      className="object-contain"
+                      key={logoSrc}
+                      src={logoSrc}
+                      alt="Logo"
+                      width={120}
+                      height={32}
+                      className="h-8 w-auto max-w-[120px] object-contain"
                       priority
+                      unoptimized={Boolean(siteLogoUrl)}
                     />
                   </Link>
 
@@ -608,7 +724,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
                   </button>
 
                   {user ? (
-                    <Link href="/myprofile" className="text-white hover:text-amber-400 transition-colors duration-200" onClick={() => setIsOpen(false)}>
+                    <Link href="/profile" className="text-white hover:text-amber-400 transition-colors duration-200" onClick={() => setIsOpen(false)}>
                       <FaUser size={20} />
                     </Link>
                   ) : (
@@ -823,14 +939,22 @@ function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, 
 }
 
 // محتوى القائمة - نفس المنطق للموبايل والكمبيوتر
-function SidebarContent({ parentCategories, categories, openParentId, handleParentClick, onSelectCategory, goalkeeperGlovesBrands = [], onSelectBrand, isRTL, t, isOpen, onShowGoalkeeperGlovesDetail }) {
-  // 🔹 State لإدارة فتح/إغلاق Goalkeeper Gloves (للوضع الديسكتوب فقط)
-  const [openGoalkeeperGloves, setOpenGoalkeeperGloves] = useState(false);
-  
-  // 🔹 الحصول على اللغة الحالية
-  const { lang } = useTranslation();
-
-  // 🔹 التحقق من أن parent category هو "goalkeeper gloves"
+function SidebarContent({
+  navSource = "legacy",
+  mainNavRoots = [],
+  parentCategories,
+  categories,
+  openParentId,
+  handleParentClick,
+  onSelectCategory,
+  onShowAllClick,
+  goalkeeperGlovesBrands = [],
+  onSelectBrand,
+  isRTL,
+  t,
+  isOpen,
+  onShowGoalkeeperGlovesDetail,
+}) {
   const isGoalkeeperGlovesParent = useCallback((parentName) => {
     if (!parentName) return false;
     
@@ -846,126 +970,114 @@ function SidebarContent({ parentCategories, categories, openParentId, handlePare
     return normalized.includes('goalkeeper') && normalized.includes('gloves');
   }, []);
 
-  // 🔹 البحث عن الاسم الفعلي لـ Goalkeeper Gloves من parentCategories أو categories
-  // 🔹 واستخراج القيمة المناسبة بناءً على اللغة الحالية
-  const goalkeeperGlovesName = useMemo(() => {
-    let nameJson = null;
-    
-    // البحث في parentCategories أولاً
-    const goalkeeperGlovesParent = parentCategories?.find(item => {
-      const parent = item.parent;
-      return isGoalkeeperGlovesParent(parent?.name);
-    });
-    
-    if (goalkeeperGlovesParent?.parent?.name) {
-      nameJson = goalkeeperGlovesParent.parent.name;
-    } else {
-      // البحث في categories إذا لم نجده في parentCategories
-      const goalkeeperGlovesCategory = categories?.find(cat => {
-        if (!cat.name) return false;
-        return isGoalkeeperGlovesParent(cat.name);
-      });
-      
-      if (goalkeeperGlovesCategory?.name) {
-        nameJson = goalkeeperGlovesCategory.name;
-      } else {
-        // Fallback: استخدام الاسم الافتراضي
-        nameJson = JSON.stringify({ en: "Goalkeeper Gloves", ar: "قفازات حارس المرمى" });
-      }
-    }
-    
-    // 🔹 استخراج القيمة المناسبة من JSON string بناءً على اللغة الحالية
-    if (nameJson) {
-      try {
-        const parsed = typeof nameJson === 'string' ? JSON.parse(nameJson) : nameJson;
-        // 🔹 اختيار en للغة الإنجليزية و ar للغة العربية
-        const selectedName = parsed[lang] || parsed.en || parsed.ar || nameJson;
-        // 🔹 إرجاع JSON string جديد يحتوي على القيمة المختارة فقط (لـ DynamicText)
-        return JSON.stringify({ [lang]: selectedName });
-      } catch {
-        // إذا فشل parsing، إرجاع النص كما هو
-        return nameJson;
-      }
-    }
-    
-    return nameJson;
-  }, [parentCategories, categories, isGoalkeeperGlovesParent, lang]);
+  // 🔹 قائمة الجذور الرئيسية (is_main / mainRootCategories) + dropdown للفرعيات
+  if (navSource === "main" && mainNavRoots.length > 0) {
+    return (
+      <ul className="space-y-1">
+        {mainNavRoots.map((main) => {
+          const subs = [...(main.subCategories || [])].sort(
+            (a, b) => (a.order ?? 9999) - (b.order ?? 9999)
+          );
+          const rowExpanded = String(openParentId) === String(main.id);
+          const isGk = isGoalkeeperGlovesCategoryName(main.name);
+          const showGkBrands =
+            isGk &&
+            Array.isArray(goalkeeperGlovesBrands) &&
+            goalkeeperGlovesBrands.length > 0 &&
+            main.show_brands_in_menu !== false;
+          const hasChevron = subs.length > 0 || showGkBrands;
 
-  // 🔹 Handler للضغط على Goalkeeper Gloves
-  const handleGoalkeeperGlovesClick = useCallback(() => {
-    // 🔹 في وضع الجوال: فتح ParentDetailView
-    if (isOpen && onShowGoalkeeperGlovesDetail) {
-      onShowGoalkeeperGlovesDetail();
-      return;
-    }
-    
-    // 🔹 في وضع الديسكتوب: toggle الفتح/الإغلاق
-    setOpenGoalkeeperGloves(prev => !prev);
-  }, [isOpen, onShowGoalkeeperGlovesDetail]);
+          return (
+            <li key={main.id} className="border-b border-neutral-700 pb-1">
+              <div
+                className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all rounded"
+                onClick={(e) => handleParentClick(main.id, main.name, e)}
+                dir={isRTL ? "rtl" : "ltr"}
+              >
+                <span className="text-sm font-medium text-white hover:text-amber-400 transition-colors">
+                  <DynamicText>{main.name}</DynamicText>
+                </span>
+                {hasChevron && (
+                  <div className="flex-shrink-0 chevron-icon">
+                    {rowExpanded ? (
+                      <ChevronDown size={16} className="text-neutral-400" />
+                    ) : (
+                      <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {rowExpanded && (subs.length > 0 || showGkBrands) && (
+                <ul
+                  className={`mt-1 mb-2 space-y-0.5 ${isRTL ? "mr-4 ml-0 border-r-2 border-neutral-700" : "ml-4 mr-0 border-l-2 border-neutral-700"} pl-2`}
+                >
+                  <li
+                    className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-500 cursor-pointer hover:text-amber-400"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onShowAllClick(main.id, main.name);
+                    }}
+                    dir={isRTL ? "rtl" : "ltr"}
+                  >
+                    {t("Show all") || "Show all"}
+                  </li>
+                  {subs.map((sub) => (
+                    <li
+                      key={sub.id}
+                      className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                      onClick={() => onSelectCategory && onSelectCategory(sub.id)}
+                      dir={isRTL ? "rtl" : "ltr"}
+                    >
+                      <DynamicText>{sub.name}</DynamicText>
+                    </li>
+                  ))}
+                  {showGkBrands &&
+                    goalkeeperGlovesBrands.map((brand, index) => {
+                      const brandName =
+                        typeof brand === "string"
+                          ? brand
+                          : brand?.brand_name || brand?.name || "";
+                      if (!brandName) return null;
+                      return (
+                        <li
+                          key={`brand-${brandName}-${index}`}
+                          className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                          onClick={() => onSelectBrand && onSelectBrand(brandName)}
+                          dir={isRTL ? "rtl" : "ltr"}
+                        >
+                          {brandName}
+                        </li>
+                      );
+                    })}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
 
   // 🔹 عرض parentCategories (التي لديها parent و parent.name) مع subcategories المرتبطة بها
   // نفس منطق الموبايل - يعمل على الشاشات الكبيرة أيضاً
   if (parentCategories && parentCategories.length > 0) {
   return (
     <ul className="space-y-1">
-      {/* 🔹 Goalkeeper Gloves كـ root category في بداية الـ sidebar */}
-      <li className="border-b border-neutral-700 pb-1">
-        <div
-          className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all rounded"
-          onClick={handleGoalkeeperGlovesClick}
-          dir={isRTL ? "rtl" : "ltr"}
-        >
-          <span className="text-sm font-medium text-white hover:text-amber-400 transition-colors">
-            {(() => {
-              // 🔹 استخراج القيمة المناسبة من JSON string بناءً على اللغة
-              try {
-                const parsed = typeof goalkeeperGlovesName === 'string' ? JSON.parse(goalkeeperGlovesName) : goalkeeperGlovesName;
-                return parsed[lang] || parsed.en || parsed.ar || goalkeeperGlovesName;
-              } catch {
-                return goalkeeperGlovesName;
-              }
-            })()}
-          </span>
-          {/* 🔹 إظهار أيقونة chevron فقط في وضع الجوال */}
-          {isOpen && goalkeeperGlovesBrands && Array.isArray(goalkeeperGlovesBrands) && goalkeeperGlovesBrands.length > 0 && (
-            <div className="flex-shrink-0 chevron-icon">
-              {openGoalkeeperGloves ? (
-                <ChevronDown size={16} className="text-neutral-400" />
-              ) : (
-                <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 🔹 عرض الـ brands عند فتح Goalkeeper Gloves - فقط في وضع الجوال */}
-        {isOpen && openGoalkeeperGloves && goalkeeperGlovesBrands && Array.isArray(goalkeeperGlovesBrands) && goalkeeperGlovesBrands.length > 0 && (
-          <ul className={`mt-1 mb-2 space-y-0.5 ${isRTL ? "mr-4 ml-0 border-r-2 border-neutral-700" : "ml-4 mr-0 border-l-2 border-neutral-700"} pl-2`}>
-            {goalkeeperGlovesBrands.map((brand, index) => {
-              const brandName = typeof brand === 'string' ? brand : (brand?.brand_name || brand?.name || '');
-              if (!brandName) return null;
-              
-              return (
-                <li
-                  key={`brand-${brandName}-${index}`}
-                  className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
-                  onClick={() => onSelectBrand && onSelectBrand(brandName)}
-                  dir={isRTL ? "rtl" : "ltr"}
-                >
-                  {brandName}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </li>
-      {parentCategories.map(item => {
+      {parentCategories.map((item) => {
         const parent = item.parent;
-        const subCategories = categories.filter(sub => sub.parent?.id === parent.id);
-        const isOpen = openParentId === parent.id;
+        const parentRoot = categories.find(
+          (c) => !c.parent && String(c.id) === String(parent.id)
+        );
+        const subCategories = categories.filter((sub) => sub.parent?.id === parent.id);
+        const rowExpanded = openParentId === parent.id;
         const hasSubCategories = subCategories.length > 0;
         const isGoalkeeperGloves = isGoalkeeperGlovesParent(parent.name);
-        const hasBrands = isGoalkeeperGloves && Array.isArray(goalkeeperGlovesBrands) && goalkeeperGlovesBrands.length > 0;
+        const hasBrands =
+          isGoalkeeperGloves &&
+          Array.isArray(goalkeeperGlovesBrands) &&
+          goalkeeperGlovesBrands.length > 0 &&
+          parentRoot?.show_brands_in_menu !== false;
 
         return (
           <li key={parent.id} className="border-b border-neutral-700 pb-1">
@@ -979,7 +1091,7 @@ function SidebarContent({ parentCategories, categories, openParentId, handlePare
                 </span>
                 {(hasSubCategories || hasBrands) && (
                   <div className="flex-shrink-0 chevron-icon">
-                    {isOpen ? (
+                    {rowExpanded ? (
                       <ChevronDown size={16} className="text-neutral-400" />
                     ) : (
                       <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
@@ -988,7 +1100,7 @@ function SidebarContent({ parentCategories, categories, openParentId, handlePare
               )}
             </div>
 
-              {isOpen && (hasSubCategories || hasBrands) && (
+              {rowExpanded && (hasSubCategories || hasBrands) && (
                 <ul className={`mt-1 mb-2 space-y-0.5 ${isRTL ? "mr-4 ml-0 border-r-2 border-neutral-700" : "ml-4 mr-0 border-l-2 border-neutral-700"} pl-2`}>
                 {/* Subcategories */}
                 {subCategories
@@ -1008,8 +1120,7 @@ function SidebarContent({ parentCategories, categories, openParentId, handlePare
                     </li>
                   ))}
                 
-                {/* 🔹 البراندات كـ subcategories لـ goalkeeper gloves - تظهر فقط في وضع الجوال */}
-                {isOpen && isGoalkeeperGloves && goalkeeperGlovesBrands && Array.isArray(goalkeeperGlovesBrands) && goalkeeperGlovesBrands.length > 0 && (
+                {isGoalkeeperGloves && goalkeeperGlovesBrands && Array.isArray(goalkeeperGlovesBrands) && goalkeeperGlovesBrands.length > 0 && (
                   <>
                     {goalkeeperGlovesBrands.map((brand, index) => {
                       const brandName = typeof brand === 'string' ? brand : (brand?.brand_name || brand?.name || '');
@@ -1037,18 +1148,99 @@ function SidebarContent({ parentCategories, categories, openParentId, handlePare
     );
   }
 
-  // 🔹 Fallback نهائي: عرض جميع categories مباشرة
+  // 🔹 Fallback: فقط جذور is_main وفرعياتها (بدون عرض كل الـ categories)
+  const fallbackMainRoots = categories
+    .filter((c) => !c.parent && c.is_main === true)
+    .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+  if (fallbackMainRoots.length > 0) {
+    return (
+      <ul className="space-y-1">
+        {fallbackMainRoots.map((main) => {
+          const subs = categories
+            .filter((sub) => sub.parent && String(sub.parent.id) === String(main.id))
+            .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+          const rowExpanded = String(openParentId) === String(main.id);
+          const isGk = isGoalkeeperGlovesCategoryName(main.name);
+          const showGkBrands =
+            isGk &&
+            Array.isArray(goalkeeperGlovesBrands) &&
+            goalkeeperGlovesBrands.length > 0 &&
+            main.show_brands_in_menu !== false;
+          const hasChevron = subs.length > 0 || showGkBrands;
+          return (
+            <li key={main.id} className="border-b border-neutral-700 pb-1">
+              <div
+                className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all rounded"
+                onClick={(e) => handleParentClick(main.id, main.name, e)}
+                dir={isRTL ? "rtl" : "ltr"}
+              >
+                <span className="text-sm font-medium text-white hover:text-amber-400 transition-colors">
+                  <DynamicText>{main.name}</DynamicText>
+                </span>
+                {hasChevron && (
+                  <div className="flex-shrink-0 chevron-icon">
+                    {rowExpanded ? (
+                      <ChevronDown size={16} className="text-neutral-400" />
+                    ) : (
+                      <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
+                    )}
+                  </div>
+                )}
+              </div>
+              {rowExpanded && (subs.length > 0 || showGkBrands) && (
+                <ul
+                  className={`mt-1 mb-2 space-y-0.5 ${isRTL ? "mr-4 ml-0 border-r-2 border-neutral-700" : "ml-4 mr-0 border-l-2 border-neutral-700"} pl-2`}
+                >
+                  <li
+                    className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-500 cursor-pointer hover:text-amber-400"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onShowAllClick(main.id, main.name);
+                    }}
+                    dir={isRTL ? "rtl" : "ltr"}
+                  >
+                    {t("Show all") || "Show all"}
+                  </li>
+                  {subs.map((sub) => (
+                    <li
+                      key={sub.id}
+                      className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                      onClick={() => onSelectCategory && onSelectCategory(sub.id)}
+                      dir={isRTL ? "rtl" : "ltr"}
+                    >
+                      <DynamicText>{sub.name}</DynamicText>
+                    </li>
+                  ))}
+                  {showGkBrands &&
+                    goalkeeperGlovesBrands.map((brand, index) => {
+                      const brandName =
+                        typeof brand === "string"
+                          ? brand
+                          : brand?.brand_name || brand?.name || "";
+                      if (!brandName) return null;
+                      return (
+                        <li
+                          key={`fb-${brandName}-${index}`}
+                          className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                          onClick={() => onSelectBrand && onSelectBrand(brandName)}
+                          dir={isRTL ? "rtl" : "ltr"}
+                        >
+                          {brandName}
+                        </li>
+                      );
+                    })}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
   return (
-    <ul className="space-y-1">
-      {categories.map(cat => (
-        <li
-          key={cat.id}
-          className="px-3 py-2 text-sm text-white cursor-pointer hover:bg-neutral-800 hover:text-amber-400 transition-all border-b border-neutral-700"
-          onClick={() => onSelectCategory && onSelectCategory(cat.id)}
-        >
-          <DynamicText>{cat.name}</DynamicText>
-        </li>
-      ))}
+    <ul className="space-y-1 px-3 py-2 text-sm text-neutral-500" dir={isRTL ? "rtl" : "ltr"}>
+      <li>{t("No categories") || "No categories"}</li>
     </ul>
   );
 }

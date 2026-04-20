@@ -5,6 +5,10 @@ import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CREATE_ORDER_WITH_TAP_PAYMENT } from "@/app/lib/mutations";
 import { useCurrency } from "@/app/contexts/CurrencyContext"; // ✅ تم إضافته
+import {
+  shouldSyncGuestCartBeforeCheckout,
+  syncGuestLocalCartToServer,
+} from "@/app/lib/guestCheckoutCartSync";
 
 export default function CustomerPage() {
   const searchParams = useSearchParams();
@@ -40,13 +44,8 @@ export default function CustomerPage() {
   const taxRate = isSaudi ? 0.15 : 0;
   const taxAmount = subtotalParam * taxRate;
   const total = subtotalParam + shippingParam + taxAmount;
-const handlePlaceOrder = async () => {
-  if (!cartId || cartId === "guest") {
-    alert("You must log in to place an order!");
-    window.location.href = "/login";
-    return;
-  }
 
+  const handlePlaceOrder = async () => {
   if (paymentType !== "TAP") return alert("Please select Tap Payment first!");
 
   if (!customer.first_name || !customer.last_name || !customer.email || !customer.phone || !customer.address) {
@@ -57,6 +56,18 @@ const handlePlaceOrder = async () => {
   setLoading(true);
 
   try {
+    let effectiveCartId = cartId;
+    if (shouldSyncGuestCartBeforeCheckout(cartId)) {
+      const synced = await syncGuestLocalCartToServer();
+      effectiveCartId = String(synced.cartId);
+    } else if (!effectiveCartId || String(effectiveCartId).trim() === "") {
+      alert("Cart not found. Please return to checkout and try again.");
+      setLoading(false);
+      return;
+    } else {
+      effectiveCartId = String(effectiveCartId).trim();
+    }
+
     // ✅ حفظ بيانات customer في localStorage قبل إرسال الطلب
     const customerData = {
       first_name: customer.first_name,
@@ -81,7 +92,7 @@ const handlePlaceOrder = async () => {
 
     // ✅ حفظ البيانات في متغير واحد لاستخدامها في CreateOrderWithTapPayment و SMSA
     const orderInput = {
-      cart_id: parseInt(cartId),
+      cart_id: effectiveCartId,
       shipping_type: shippingType,
       shipping_country_id: parseInt(shippingCountryId),
       shipping_cost: convertPrice(shippingParam),
@@ -168,12 +179,15 @@ const handlePlaceOrder = async () => {
     }
   } catch (error) {
     console.error("TAP ERROR:", error);
-    alert("Payment processing failed: Invalid response from Tap payment service");
+    const msg =
+      error?.message && typeof error.message === "string"
+        ? error.message
+        : "Payment processing failed: Invalid response from Tap payment service";
+    alert(msg);
   } finally {
     setLoading(false);
   }
-};
-
+  };
 
   return (
     <div className="min-h-screen bg-white md:bg-gray-50 text-[#111]">

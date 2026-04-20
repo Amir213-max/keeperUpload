@@ -6,8 +6,7 @@ import 'swiper/css';
 import 'swiper/css/navigation';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { graphqlClient } from '../lib/graphqlClient';
-import { PRODUCTS_BY_CATEGORY_QUERY } from '../lib/queries';
+import { fetchPromoSliderProducts } from "../lib/clientCategoryListing";
 import { useTranslation } from '../contexts/TranslationContext';
 import Link from 'next/link';
 
@@ -18,14 +17,8 @@ export default function BootsSlider() {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        // افترض إن عندك ID للفئة 'boots' مثلا 3
-        const categoryId = 23;
-
-        const data = await graphqlClient.request(PRODUCTS_BY_CATEGORY_QUERY, { categoryId });
-        // نجمع المنتجات من الفئة الرئيسية + المنتجات من subCategories لو موجودة
-        const mainProducts = data.rootCategory?.products || [];
-        const subProducts = data.rootCategory?.subCategories?.flatMap(sub => sub.products) || [];
-        setProducts([...mainProducts, ...subProducts].slice(0, 10)); // آخر 10 منتجات
+        const list = await fetchPromoSliderProducts("trainingAids", { limit: 10 });
+        setProducts(list);
       } catch (err) {
         console.error("Error fetching boots products:", err);
       }

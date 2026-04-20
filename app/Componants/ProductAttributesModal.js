@@ -1,13 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ShoppingCart } from "lucide-react";
 import { useCurrency } from "../contexts/CurrencyContext";
 import PriceDisplay from "../components/PriceDisplay";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
-import { ADD_ITEM_TO_CART } from "../lib/mutations";
-import { fetchUserCart } from "../lib/mutations";
+import { addToCartTempUser } from "../lib/mutations";
+import {
+  findVariantBySelectedSize,
+  findVariantForSizeValue,
+  getVariantQuantityCap,
+  guestCartLineKey,
+  isSizeLikeAttributeLabel,
+  isVariantPurchasable,
+  sortSizeOptionValues,
+  variantsHaveSizeOnStock,
+} from "../lib/variantMatch";
 import toast from "react-hot-toast";
 import { gql } from "graphql-request";
 import { Splide, SplideSlide } from '@splidejs/react-splide';
@@ -24,6 +33,19 @@ const GET_PRODUCT_BY_ID = gql`
       images
       list_price_amount
       price_range_exact_amount
+      variants {
+        id
+        name
+        price
+        size
+        variant_sku
+        stock {
+          qty
+          minQty
+          maxQty
+          isInStock
+        }
+      }
       productBadges {
         label
         color
@@ -78,34 +100,89 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
     }
   }, [isOpen, productId, onClose]);
 
-  // تجهيز الخصائص
-  const attributesMap = {};
-  product?.productAttributeValues?.forEach((val) => {
-    if (!attributesMap[val.attribute.label]) {
-      attributesMap[val.attribute.label] = [];
-    }
-    if (!attributesMap[val.attribute.label].includes(val.key)) {
-      attributesMap[val.attribute.label].push(val.key);
-    }
-  });
+  const variants = product?.variants;
 
-  // حساب السعر
-  const basePrice = product?.list_price_amount || 0;
-  let finalPrice = basePrice;
+  const attributesMap = useMemo(() => {
+    const map = {};
+    product?.productAttributeValues?.forEach((val) => {
+      const label = val.attribute?.label;
+      if (!label) return;
+      if (!map[label]) map[label] = [];
+      if (!map[label].includes(val.key)) map[label].push(val.key);
+    });
+    if (variants?.length) {
+      const existingSizeLabel = Object.keys(map).find((l) => isSizeLikeAttributeLabel(l));
+      const sizesFromVariants = [];
+      variants.forEach((v) => {
+        if (v.size?.trim() && !sizesFromVariants.includes(v.size)) sizesFromVariants.push(v.size);
+      });
+      if (sizesFromVariants.length) {
+        if (existingSizeLabel) {
+          sizesFromVariants.forEach((s) => {
+            if (!map[existingSizeLabel].includes(s)) map[existingSizeLabel].push(s);
+          });
+        } else {
+          map.Size = [...sizesFromVariants];
+        }
+      }
+    }
+    for (const key of Object.keys(map)) {
+      if (isSizeLikeAttributeLabel(key) && Array.isArray(map[key])) {
+        map[key] = sortSizeOptionValues(map[key]);
+      }
+    }
+    return map;
+  }, [product, variants]);
+
+  const selectedVariant = useMemo(
+    () => findVariantBySelectedSize(variants, selectedAttributes),
+    [variants, selectedAttributes]
+  );
+
+  const sizeSelectionRequired = useMemo(() => {
+    if (variantsHaveSizeOnStock(variants)) return true;
+    return Object.keys(attributesMap).some(
+      (l) => isSizeLikeAttributeLabel(l) && (attributesMap[l]?.length ?? 0) > 0
+    );
+  }, [variants, attributesMap]);
+
+  const addToCartDisabled = adding || (sizeSelectionRequired && !selectedVariant);
+
   const badgeLabel = product?.productBadges?.[0]?.label || "";
   const discountMatch = badgeLabel.match(/(\d+)%/);
-  if (discountMatch) {
-    const discountPercent = parseFloat(discountMatch[1]);
-    finalPrice = basePrice - (basePrice * discountPercent) / 100;
-  }
+
+  const basePrice = useMemo(() => {
+    const fromVar =
+      selectedVariant && typeof selectedVariant.price === "number"
+        ? selectedVariant.price
+        : null;
+    const productBase = product?.list_price_amount || product?.price_range_exact_amount || 0;
+    return fromVar != null && !Number.isNaN(fromVar) ? fromVar : productBase;
+  }, [selectedVariant, product?.list_price_amount, product?.price_range_exact_amount]);
+
+  const finalPrice = useMemo(() => {
+    let v = basePrice;
+    if (discountMatch) {
+      const discountPercent = parseFloat(discountMatch[1], 10);
+      v = basePrice - (basePrice * discountPercent) / 100;
+    }
+    return v;
+  }, [basePrice, discountMatch]);
+
+  const quantityCap = useMemo(() => {
+    if (selectedVariant) return getVariantQuantityCap(selectedVariant);
+    return 99;
+  }, [selectedVariant]);
+
+  useEffect(() => {
+    setQuantity((q) => Math.min(Math.max(1, q), quantityCap));
+  }, [quantityCap]);
 
   // إضافة للباسكت
   const handleAddToCart = async () => {
     // ✅ التحقق من size فقط (تجاهل color)
-    const requiredAttributes = Object.keys(attributesMap).filter(
-      (label) =>
-        label.toLowerCase().includes("size")
-        // إزالة color من التحقق
+    const requiredAttributes = Object.keys(attributesMap).filter((label) =>
+      isSizeLikeAttributeLabel(label)
     );
 
     const missing = requiredAttributes.filter(
@@ -117,6 +194,16 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
       return;
     }
 
+    if (variantsHaveSizeOnStock(variants)) {
+      const picked = Object.entries(selectedAttributes).some(
+        ([k, v]) => isSizeLikeAttributeLabel(k) && String(v ?? "").trim()
+      );
+      if (!picked) {
+        toast.error("Please select a size");
+        return;
+      }
+    }
+
     // ✅ إزالة color من selectedAttributes قبل الإرسال
     const cleanedAttributes = Object.keys(selectedAttributes).reduce((acc, key) => {
       if (!key.toLowerCase().includes('color')) {
@@ -125,52 +212,92 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
       return acc;
     }, {});
 
+    let variant = findVariantBySelectedSize(variants, cleanedAttributes);
+    if (variants?.length && requiredAttributes.length) {
+      if (!variant) {
+        toast.error("Selected size is not available");
+        return;
+      }
+      if (!isVariantPurchasable(variant)) {
+        toast.error("This size is out of stock");
+        return;
+      }
+      const cap = getVariantQuantityCap(variant);
+      if (quantity > cap) {
+        toast.error(`Maximum quantity for this size is ${cap}`);
+        return;
+      }
+    }
+    if (
+      !variant &&
+      Array.isArray(variants) &&
+      variants.length === 1 &&
+      !variantsHaveSizeOnStock(variants)
+    ) {
+      variant = variants[0];
+    }
+
+    const unitPrice = basePrice;
+
     setAdding(true);
     try {
       const user = JSON.parse(localStorage.getItem("user"));
 
       if (user) {
-        const userCart = await fetchUserCart();
-        const cartId = userCart?.id;
-        if (!cartId) {
-          toast.error("Cart not found");
+        if (!variant?.id) {
+          toast.error("Please select a valid product option.");
           return;
         }
-
-        // Use API route proxy to avoid CORS issues
-        await graphqlRequest(ADD_ITEM_TO_CART, {
-          input: {
-            cart_id: cartId,
-            product_id: product.id,
-            quantity: quantity,
-          },
-        });
+        await addToCartTempUser(product.id, quantity, unitPrice, variant.id);
         toast.success("Added to cart!");
       } else {
-        // Guest cart
         const cartKey = "guest_cart";
         const existingCart = JSON.parse(localStorage.getItem(cartKey)) || { lineItems: [] };
+        const key = guestCartLineKey(product.id, variant?.id ?? null);
         const existingItemIndex = existingCart.lineItems.findIndex(
-          (item) => item.productId === product.id
+          (item) => guestCartLineKey(item.productId, item.variantId ?? null) === key
         );
+
+        const linePayload = {
+          id:
+            typeof crypto !== "undefined" && crypto.randomUUID
+              ? crypto.randomUUID()
+              : `guest-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          productId: product.id,
+          variantId: variant?.id ?? null,
+          variantSku: variant?.variant_sku ?? null,
+          variantSize: variant?.size?.trim() || undefined,
+          variantStock:
+            variant?.stock && typeof variant.stock === "object"
+              ? { ...variant.stock }
+              : undefined,
+          unitPrice,
+          quantity,
+          price: unitPrice,
+          product: {
+            id: product.id,
+            name: product.name,
+            sku: product.sku,
+            list_price_amount: product.list_price_amount,
+            price_range_exact_amount: product.price_range_exact_amount,
+            images: product.images,
+            productBadges: product.productBadges || [],
+          },
+          attributes: cleanedAttributes,
+        };
 
         if (existingItemIndex >= 0) {
           existingCart.lineItems[existingItemIndex].quantity += quantity;
+          existingCart.lineItems[existingItemIndex].unitPrice = unitPrice;
+          existingCart.lineItems[existingItemIndex].price = unitPrice;
+          if (variant?.stock && typeof variant.stock === "object") {
+            existingCart.lineItems[existingItemIndex].variantStock = { ...variant.stock };
+          }
+          if (variant?.size?.trim()) {
+            existingCart.lineItems[existingItemIndex].variantSize = variant.size.trim();
+          }
         } else {
-          existingCart.lineItems.push({
-            productId: product.id,
-            quantity: quantity,
-            product: {
-              id: product.id,
-              name: product.name,
-              sku: product.sku,
-              list_price_amount: product.list_price_amount,
-              price_range_exact_amount: product.price_range_exact_amount,
-              images: product.images,
-              productBadges: product.productBadges || [],
-            },
-            attributes: cleanedAttributes, // استخدام cleanedAttributes بدون color
-          });
+          existingCart.lineItems.push(linePayload);
         }
 
         localStorage.setItem(cartKey, JSON.stringify(existingCart));
@@ -199,7 +326,7 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4"
             onClick={onClose}
           >
             {/* Modal */}
@@ -208,7 +335,7 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
-              className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto z-50 overflow-x-hidden"
+              className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto z-[110] overflow-x-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               {loading ? (
@@ -297,14 +424,9 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                         {Object.keys(attributesMap).length > 0 && (
                           <div className="space-y-4 pt-4 border-t">
                             {Object.entries(attributesMap)
-                              .filter(
-                                ([label]) =>
-                                  // عرض size فقط، تجاهل color تماماً
-                                  label.toLowerCase().includes("size")
-                                  // إزالة color من العرض
-                              )
+                              .filter(([label]) => isSizeLikeAttributeLabel(label))
                               .sort(([a], [b]) =>
-                                a.toLowerCase().includes("size") ? -1 : 1
+                                a.localeCompare(b, undefined, { sensitivity: "base" })
                               )
                               .map(([label, values]) => {
                                 return (
@@ -317,9 +439,13 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                                     <div className="hidden md:flex flex-wrap gap-2">
                                         {values.map((val) => {
                                           const selected = selectedAttributes[label] === val;
+                                          const v = findVariantForSizeValue(variants, val);
+                                          const purchasable = !v || isVariantPurchasable(v);
                                           return (
                                             <button
                                               key={val}
+                                              type="button"
+                                              disabled={!purchasable}
                                               onClick={() =>
                                                 setSelectedAttributes((prev) => ({
                                                   ...prev,
@@ -327,9 +453,11 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                                                 }))
                                               }
                                               className={`px-4 py-2 border-2 rounded-lg text-sm font-medium transition-all ${
-                                                selected
-                                                  ? "border-gray-900 bg-gray-900 text-white"
-                                                  : "border-gray-200 text-gray-700 hover:border-gray-400"
+                                                !purchasable
+                                                  ? "border-gray-100 text-gray-300 line-through cursor-not-allowed"
+                                                  : selected
+                                                    ? "border-gray-900 bg-gray-900 text-white"
+                                                    : "border-gray-200 text-gray-700 hover:border-gray-400"
                                               }`}
                                             >
                                               <DynamicText>{val}</DynamicText>
@@ -355,12 +483,16 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                                       >
                                         {values.map((val) => {
                                           const selected = selectedAttributes[label] === val;
+                                          const v = findVariantForSizeValue(variants, val);
+                                          const purchasable = !v || isVariantPurchasable(v);
                                           return (
                                             <SplideSlide
                                               key={val}
                                               className="p-0 m-0 flex justify-center items-center"
                                             >
                                               <button
+                                                type="button"
+                                                disabled={!purchasable}
                                                 onClick={() =>
                                                   setSelectedAttributes((prev) => ({
                                                     ...prev,
@@ -374,9 +506,11 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                                                   whitespace-nowrap w-fit
                                                   rounded-lg
                                                   ${
-                                                    selected
-                                                      ? 'bg-gradient-to-r text-white from-gray-400 to-gray-500 text-gray-900 shadow-lg transform scale-105'
-                                                      : 'bg-white text-gray-700 shadow-md hover:shadow-lg hover:bg-gray-50'
+                                                    !purchasable
+                                                      ? "opacity-40 line-through cursor-not-allowed bg-gray-100 text-gray-400"
+                                                      : selected
+                                                        ? "bg-gradient-to-r text-white from-gray-400 to-gray-500 text-gray-900 shadow-lg transform scale-105"
+                                                        : "bg-white text-gray-700 shadow-md hover:shadow-lg hover:bg-gray-50"
                                                   }`}
                                               >
                                                 <DynamicText>{val}</DynamicText>
@@ -437,6 +571,7 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                           </h4>
                           <div className="flex items-center gap-3">
                             <button
+                              type="button"
                               onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                               className="w-10 h-10 border-2 border-gray-300 rounded-lg flex items-center justify-center hover:border-gray-400 transition"
                             >
@@ -446,8 +581,10 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                               {quantity}
                             </span>
                             <button
-                              onClick={() => setQuantity((q) => q + 1)}
-                              className="w-10 h-10 border-2 border-gray-300 rounded-lg flex items-center justify-center hover:border-gray-400 transition"
+                              type="button"
+                              onClick={() => setQuantity((q) => Math.min(quantityCap, q + 1))}
+                              disabled={quantity >= quantityCap}
+                              className="w-10 h-10 border-2 border-gray-300 rounded-lg flex items-center justify-center hover:border-gray-400 transition disabled:opacity-40"
                             >
                               +
                             </button>
@@ -466,8 +603,9 @@ export default function ProductAttributesModal({ productId, isOpen, onClose, onA
                       Cancel
                     </button>
                     <button
+                      type="button"
                       onClick={handleAddToCart}
-                      disabled={adding}
+                      disabled={addToCartDisabled}
                       className="flex-1 px-4 py-3 bg-yellow-400 hover:bg-yellow-500 disabled:bg-yellow-300 text-gray-900 font-bold rounded-lg transition flex items-center justify-center gap-2"
                     >
                       {adding ? (

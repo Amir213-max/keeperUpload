@@ -15,6 +15,7 @@ import { ADD_TO_WISHLIST } from "../lib/mutations";
 import PriceDisplay from "../components/PriceDisplay";
 import DynamicText from "../components/DynamicText";
 import { useRouter, useSearchParams } from "next/navigation";
+import { flattenCategoriesWithParentRefs } from "../lib/categoryResolve";
 
 export default function ProductsPageLayout({
   products,
@@ -122,18 +123,12 @@ export default function ProductsPageLayout({
         }
       );
 
-      const categoryMatch =
-        !selectedCategoryId ||
-        (product.rootCategories || []).some(
-          (cat) => String(cat.id) === String(selectedCategoryId)
-        );
-
-      return brandMatch && attributesMatch && categoryMatch;
+      return brandMatch && attributesMatch;
     });
 
     setFilteredProducts(result);
     setCurrentPage(1);
-  }, [products, selectedBrand, selectedAttributes, selectedCategoryId]);
+  }, [products, selectedBrand, selectedAttributes]);
 
   // 🔹 تحديث الـ URL عند تغيير الفلاتر
   useEffect(() => {
@@ -149,19 +144,16 @@ export default function ProductsPageLayout({
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [selectedBrand, selectedCategoryId, selectedAttributes, router]);
 
-  const categoriesWithProducts = useMemo(() => {
-    return categories.filter((cat) =>
-      products.some((product) =>
-        (product.rootCategories || []).some((pCat) => pCat.id === cat.id)
-      )
-    );
-  }, [categories, products]);
+  const categoriesForSidebar = useMemo(
+    () => flattenCategoriesWithParentRefs(categories),
+    [categories]
+  );
 
   // 🔹 ضبط اسم التصنيف المحدد
   useEffect(() => {
-    const cat = categoriesWithProducts.find((c) => c.id === selectedCategoryId);
+    const cat = categoriesForSidebar.find((c) => String(c.id) === String(selectedCategoryId));
     setSelectedCategoryName(cat?.name || null);
-  }, [selectedCategoryId, categoriesWithProducts]);
+  }, [selectedCategoryId, categoriesForSidebar]);
 
   // 🔹 تحديث الـ URL عند تغيير الفلاتر
   useEffect(() => {
@@ -195,7 +187,7 @@ export default function ProductsPageLayout({
       setSelectedCategoryName(null);
     } else {
       setSelectedCategoryId(catId);
-      const cat = categories.find((c) => c.id === catId);
+      const cat = categoriesForSidebar.find((c) => String(c.id) === String(catId));
       setSelectedCategoryName(cat?.name || null);
     }
   };
@@ -219,7 +211,7 @@ export default function ProductsPageLayout({
         {/* Sidebar desktop */}
         <div className="hidden lg:block lg:col-span-1 bg-[#1f2323] h-auto p-2">
           <Sidebar
-            categories={categoriesWithProducts}
+            categories={categoriesForSidebar}
             onSelectCategory={handleCategorySelect}
           />
         </div>
@@ -355,7 +347,7 @@ export default function ProductsPageLayout({
         <div className="fixed inset-0 z-40 bg-black/60 flex">
           <div className="bg-[#1f2323] w-3/4 sm:w-2/4 p-4 overflow-y-auto">
             <Sidebar
-              categories={categoriesWithProducts}
+              categories={categoriesForSidebar}
               onSelectCategory={handleCategorySelect}
               setIsOpen={setSidebarOpen}
             />

@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { setAuthToken } from "../lib/graphqlClient";
 import { getDynamicUserId } from "../lib/mutations";
 
@@ -20,41 +20,45 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-const login = (userData, token) => {
-  setUser(userData);
-  setToken(token);
-  localStorage.setItem("user", JSON.stringify(userData));
-  localStorage.setItem("token", token);
+  const login = useCallback((userData, tokenValue) => {
+    setUser(userData);
+    setToken(tokenValue);
+    localStorage.setItem("user", JSON.stringify(userData));
+    localStorage.setItem("token", tokenValue);
 
-  // إزالة guest_id لأنه خلاص بقى عنده كارت باسم حسابه
-  localStorage.removeItem("guest_id");
-};
+    // إزالة guest_id لأنه خلاص بقى عنده كارت باسم حسابه
+    localStorage.removeItem("guest_id");
+  }, []);
 
+  const updateUser = useCallback((partial) => {
+    setUser((prev) => {
+      const next = { ...(prev || {}), ...partial };
+      localStorage.setItem("user", JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
+  const logout = useCallback(() => {
+    // مسح بيانات المستخدم
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
 
+    // إزالة التوكن من GraphQLClient
+    setAuthToken(null);
 
-const logout = () => {
-  // مسح بيانات المستخدم
-  setUser(null);
-  setToken(null);
-  localStorage.removeItem("user");
-  localStorage.removeItem("token");
+    // توليد guest_id جديد للكارت
+    getDynamicUserId();
 
-  // إزالة التوكن من GraphQLClient
-  setAuthToken(null);
-
-  // توليد guest_id جديد للكارت
-  getDynamicUserId();
-
-  // optional: redirect للهوم
-  if (typeof window !== "undefined") {
-    window.location.href = "/";
-  }
-};
-
+    // optional: redirect للهوم
+    if (typeof window !== "undefined") {
+      window.location.href = "/";
+    }
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

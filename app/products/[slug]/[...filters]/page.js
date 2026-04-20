@@ -1,92 +1,68 @@
 import { Suspense } from "react";
-import { graphqlClient } from "../../../lib/graphqlClient";
-import { PRODUCTS_BY_CATEGORY_FILTERED_QUERY, GET_CATEGORIES_ONLY_QUERY } from "../../../lib/queries";
-import { removeDuplicateProducts } from "../../../lib/removeDuplicateProducts";
+import { notFound } from "next/navigation";
 import Loader from "../../../Componants/Loader";
+import {
+  fetchCategoryListingBySlug,
+  fetchCategoryAttributeFacets,
+  DEFAULT_CATEGORY_PAGE_SIZE,
+} from "../../../lib/fetchCategoryListing";
+import { getListingPageQuery } from "../../../lib/categoryPageServer";
 import ProductsClientPage from "../../ProductsClientPage";
 
-/**
- * ✅ جلب المنتجات مع pagination باستخدام limit و offset
- * - يستخدم PRODUCTS_BY_CATEGORY_FILTERED_QUERY الذي يدعم limit/offset
- * - يقلل استهلاك السيرفر بجلب 30 منتج فقط في كل صفحة
- */
-const fetchProductsByCategory = async (categorySlug, page = 1, limit = 30) => {
-  // ⚠️ Cannot fetch all products - must have a category
+const fetchProductsByCategory = async (categorySlug, searchParams) => {
   if (!categorySlug) {
-    console.warn("⚠️ Cannot fetch products without categoryId - this causes 503 errors");
-    return { products: [], rootCategory: null, totalCount: 0 };
+    return {
+      products: [],
+      rootCategory: null,
+      totalCount: 0,
+      hasMore: false,
+      categoryId: null,
+      page: 1,
+      pageSize: DEFAULT_CATEGORY_PAGE_SIZE,
+    };
   }
 
-  // 🔹 البحث عن category بالـ slug أولاً
-  const categoriesData = await graphqlClient.request(GET_CATEGORIES_ONLY_QUERY);
-  const foundCategory = categoriesData.rootCategories?.find(
-    (cat) => cat.slug === categorySlug
+  const { offset, page } = await getListingPageQuery(searchParams);
+
+  const result = await fetchCategoryListingBySlug({
+    slug: categorySlug,
+    limit: DEFAULT_CATEGORY_PAGE_SIZE,
+    offset,
+  });
+
+  if (result.notFound) {
+    notFound();
+  }
+
+  const sorted = [...result.products].sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at)
   );
 
-  if (!foundCategory) {
-    return { products: [], rootCategory: null, totalCount: 0 };
-  }
-
-  // حساب offset من page number
-  const offset = (page - 1) * limit;
-
-  // جلب المنتجات باستخدام limit و offset
-  const variables = { 
-    categoryId: foundCategory.id,
-    limit: limit,
-    offset: offset
-  };
-  const data = await graphqlClient.request(PRODUCTS_BY_CATEGORY_FILTERED_QUERY, variables);
-
-  let products = data.productsByCategory || [];
-
-  // ✅ إزالة المنتجات المكررة بناءً على product.id
-  products = removeDuplicateProducts(products);
-
-  products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-  // حساب total count بناءً على hasMore
-  // إذا كان hasMore = true، فهناك صفحات إضافية
-  // إذا كان hasMore = false، فالصفحة الحالية هي الأخيرة
-  const hasMore = products.length === limit;
-  const totalCount = hasMore ? limit * (page + 1) : (limit * (page - 1)) + products.length;
-
-  return { 
-    products, 
-    rootCategory: data.rootCategory,
-    totalCount,
-    hasMore
+  return {
+    products: sorted,
+    rootCategory: result.rootCategory,
+    totalCount: sorted.length + offset,
+    hasMore: result.hasMore,
+    categoryId: result.category.id,
+    page,
+    pageSize: DEFAULT_CATEGORY_PAGE_SIZE,
   };
 };
 
 export default async function ProductsFiltersPage({ params, searchParams }) {
   const categorySlug = params?.slug || null;
   const filters = params?.filters || [];
-  const page = parseInt(searchParams?.page || '1', 10);
-  
-  const { products, rootCategory, totalCount, hasMore } = await fetchProductsByCategory(categorySlug, page, 30);
 
-  const attributeMap = {};
-  products.forEach((product) => {
-    if (product.productAttributeValues) {
-      product.productAttributeValues.forEach((attr) => {
-        const key = attr.attribute?.label;
-        const value = attr.key;
+  const { products, rootCategory, totalCount, hasMore, categoryId, page, pageSize } =
+    await fetchProductsByCategory(categorySlug, searchParams);
 
-        if (key && value) {
-          if (!attributeMap[key]) attributeMap[key] = new Set();
-          attributeMap[key].add(value);
-        }
-      });
-    }
-  });
-
-  const attributeValues = Object.entries(attributeMap).map(([attribute, values]) => ({
-    attribute,
-    values: Array.from(values),
-  }));
-
-  const brands = [...new Set(products.map((p) => p.brand_name).filter(Boolean))];
+  let brands = [];
+  let attributeValues = [];
+  if (categoryId) {
+    const facet = await fetchCategoryAttributeFacets({ categoryId });
+    brands = facet.brands;
+    attributeValues = facet.attributeValues;
+  }
 
   return (
     <Suspense fallback={<Loader />}>
@@ -100,8 +76,9 @@ export default async function ProductsFiltersPage({ params, searchParams }) {
         currentPage={page}
         totalCount={totalCount}
         hasMore={hasMore}
+        categoryId={categoryId}
+        listingPageSize={pageSize}
       />
     </Suspense>
   );
 }
-

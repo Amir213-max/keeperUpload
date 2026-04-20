@@ -10,6 +10,7 @@ import { Toaster } from 'react-hot-toast';
 import "./globals.css";
 import { AuthProvider } from "./contexts/AuthContext";
 import { CategoryProvider } from "./contexts/CategoryContext";
+import { PublicNavSettingsProvider } from "./contexts/PublicNavSettingsContext";
 import ProgressBar from "./components/ProgressBar";
 
 
@@ -34,9 +35,13 @@ export const metadata = {
     "كيبر سبورت | أكبر تشكيلة من قفازات حراس المرمى، أحذية كرة القدم، ملابس ومعدات احترافية",
   
   icons: {
-    icon: '/logo.jpg',
-    shortcut: '/logo.jpg',
-    apple: '/logo.jpg',
+    icon: [
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-512x512.png", sizes: "512x512", type: "image/png" },
+    ],
+    shortcut: [{ url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" }],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 
   openGraph: {
@@ -76,6 +81,7 @@ export default function RootLayout({ children  }) {
      <body className={`${geistSans.variable} ${geistMono.variable}`}>
 
    <TranslationProvider>
+   <PublicNavSettingsProvider>
 <AuthProvider>
 <CurrencyProvider>
   
@@ -103,6 +109,7 @@ export default function RootLayout({ children  }) {
 </CategoryProvider>
 </CurrencyProvider>
 </AuthProvider>
+   </PublicNavSettingsProvider>
     </TranslationProvider>
       </body>
       </html>

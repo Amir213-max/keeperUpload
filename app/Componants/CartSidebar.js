@@ -4,12 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
-import {
-  fetchUserCart,
-  removeItemFromCart,
-  UPDATE_CART_ITEM_QUANTITY,
-  ADD_ITEM_TO_CART,
-} from "../lib/mutations";
+import { removeItemFromCart } from "../lib/mutations";
 
 import { ShoppingCart, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -18,54 +13,9 @@ import DynamicText from "../components/DynamicText";
 import { useCurrency } from "../contexts/CurrencyContext";
 import { useTranslation } from "../contexts/TranslationContext";
 import { useCart } from "../contexts/CartContext";
-import { gql } from "graphql-request";
 import { RECOMMENDED_PRODUCTS_QUERY } from "../lib/queries";
 import ProductAttributesModal from "./ProductAttributesModal";
-
-// استعلام جديد حسب طلبك
-const GET_PRODUCT_BY_ID = gql`
-  query GetProductById($id: String!) {
-    product(id: $id) {
-      id
-      name
-      sku
-      description_ar
-      description_en
-      images
-      variants {
-        id
-        name
-        price
-      }
-      productAttributeValues {
-        id
-        key
-        attribute {
-          id
-          label
-        }
-      }
-      brand {
-        id
-        name
-        logo
-      }
-      productBadges {
-        label
-        color
-      }
-      list_price_amount
-      list_price_currency
-      relative_list_price_difference
-      price_range_from
-      price_range_to
-      price_range_currency
-      price_range_exact_amount
-      price_range_maximum_amount
-      price_range_minimum_amount
-    }
-  }
-`;
+import { getVariantQuantityCap } from "../lib/variantMatch";
 
 export default function CartSidebar({ isOpen, onClose }) {
   const { cart, loading, loadCart, removeItem, updateQuantity } = useCart();
@@ -160,107 +110,18 @@ export default function CartSidebar({ isOpen, onClose }) {
       setUpdating(null);
     }
   };
-// ✅ فتح الـ modal لاختيار الـ Attributes
-const handleAddToCart = async (productId) => {
-  try {
-    // جلب بيانات المنتج للتحقق من وجود Attributes
-    // Use API route proxy to avoid CORS issues
-    const { product } = await graphqlRequest(GET_PRODUCT_BY_ID, { id: productId });
-    
-    // تجهيز الخصائص
-    const attributesMap = {};
-    product?.productAttributeValues?.forEach((val) => {
-      if (!attributesMap[val.attribute.label]) {
-        attributesMap[val.attribute.label] = [];
-      }
-      if (!attributesMap[val.attribute.label].includes(val.key)) {
-        attributesMap[val.attribute.label].push(val.key);
-      }
-    });
+  /** إضافة من السلة: دائماً فتح المودال لاختيار الـ variant (متوافق مع variant_id إلزامي في الـ API) */
+  const handleAddToCart = (productId) => {
+    setModalProductId(productId);
+    setIsModalOpen(true);
+  };
 
-    // التحقق من وجود Attributes مطلوبة (Size فقط - تجاهل Color)
-    const requiredAttributes = Object.keys(attributesMap).filter(
-      (label) =>
-        label.toLowerCase().includes("size")
-        // إزالة color من التحقق
-    );
-
-    // إذا كان فيه Attributes مطلوبة، افتح الـ modal
-    if (requiredAttributes.length > 0) {
-      setModalProductId(productId);
-      setIsModalOpen(true);
-    } else {
-      // إذا مفيش Attributes، أضف مباشرة
-      await addProductToCartDirectly(productId);
-    }
-  } catch (err) {
-    console.error("❌ Error checking product:", err);
-    toast.error(t("Error loading product"));
-  }
-};
-
-// ✅ إضافة المنتج مباشرة بدون Attributes
-const addProductToCartDirectly = async (productId) => {
-  try {
-    setAdding(productId);
-    const user = JSON.parse(localStorage.getItem("user"));
-
-    if (user) {
-      const userCart = await fetchUserCart();
-      const cartId = userCart?.id;
-      if (!cartId) {
-        toast.error(t("Cart not found, please refresh."));
-        return;
-      }
-
-      // Use API route proxy to avoid CORS issues
-      await graphqlRequest(ADD_ITEM_TO_CART, {
-        input: { cart_id: cartId, product_id: productId, quantity: 1 },
-      });
-    } else {
-      // 🧍‍♂️ الزائر
-      const cartKey = "guest_cart";
-      const existingCart = JSON.parse(localStorage.getItem(cartKey)) || { lineItems: [] };
-      const existingItemIndex = existingCart.lineItems.findIndex(
-        (item) => item.productId === productId
-      );
-
-      if (existingItemIndex >= 0) {
-        existingCart.lineItems[existingItemIndex].quantity += 1;
-      } else {
-        // 🧩 جلب بيانات المنتج وتخزينها كاملة في الكارت
-        // Use API route proxy to avoid CORS issues
-        const { product } = await graphqlRequest(GET_PRODUCT_BY_ID, { id: productId });
-
-        existingCart.lineItems.push({
-          productId,
-          quantity: 1,
-          product: {
-            id: product.id,
-            name: product.name,
-            sku: product.sku,
-            list_price_amount: product.list_price_amount,
-            price_range_exact_amount: product.price_range_exact_amount,
-            images: product.images,
-            productBadges: product.productBadges || [],
-          },
-        });
-      }
-
-      localStorage.setItem(cartKey, JSON.stringify(existingCart));
-    }
-
-    await loadCart();
-    window.dispatchEvent(new CustomEvent("cartUpdated"));
-    toast.success(t("✅ Added to cart!"));
-  } catch (err) {
-    console.error("❌ Error adding product:", err);
-    toast.error(t("Error adding product"));
-  } finally {
-    setAdding(null);
-  }
-};
-
+  /** Stock from API cart line (`variant.stock`) or guest snapshot (`variantStock`). */
+  const getLineStock = (item) => {
+    const st = item?.variant?.stock ?? item?.variantStock;
+    if (!st || typeof st !== "object") return null;
+    return st;
+  };
 
   return (
     <div
@@ -283,27 +144,96 @@ const addProductToCartDirectly = async (productId) => {
             <div className="space-y-4">
               {cart.lineItems.map((item, index) => {
                 const product = item.product || {};
-                const finalPrice = product.price_range_exact_amount || product.list_price_amount || 0;
+                const unit =
+                  Number(item.unitPrice ?? item.price) ||
+                  product.price_range_exact_amount ||
+                  product.list_price_amount ||
+                  0;
+                const lineTotal = unit * (item.quantity || 1);
                 const uniqueKey = item.id || `cart-item-${index}-${item.sku || item.product?.id || Date.now()}`;
+                const imgSrc =
+                  typeof product.images?.[0] === "string"
+                    ? product.images[0]
+                    : product.images?.[0]?.url || "/no-img.png";
+                const attrSummary =
+                  item.attributes && Object.keys(item.attributes).length
+                    ? Object.entries(item.attributes)
+                        .map(([k, v]) => `${k}: ${v}`)
+                        .join(" · ")
+                    : "";
+                const stock = getLineStock(item);
+                const stockForCap = stock ? { stock } : null;
+                const qtyCap = stockForCap ? getVariantQuantityCap(stockForCap) : null;
+                const atStockCap =
+                  typeof qtyCap === "number" && item.quantity != null && item.quantity >= qtyCap;
+                const outOfStock = stock?.isInStock === false;
                 return (
                   <motion.div key={uniqueKey} layout transition={{ duration: 0.25, ease: "easeInOut" }} className="flex items-center justify-between bg-white shadow-sm p-3 hover:shadow-md transition">
                     <div className="flex items-center space-x-3">
-                      <img src={product.images?.[0] || "/no-img.png"} alt={product.name || "Product"} className="w-16 h-16 object-fill-fitgg border" />
+                      <img src={imgSrc} alt={product.name || "Product"} className="w-16 h-16 object-contain border" />
                       <div>
                         <p className="font-semibold text-gray-800">
                           <DynamicText>{product.name || item.name || "Product"}</DynamicText>
                         </p>
+                        {attrSummary ? (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            <DynamicText>{attrSummary}</DynamicText>
+                          </p>
+                        ) : null}
+                        {item.variantSku ? (
+                          <p className="text-xs text-gray-400 font-mono mt-0.5">Var. SKU: {item.variantSku}</p>
+                        ) : null}
+                        {item.variant?.size || item.variantSize ? (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {t("Size")}:{" "}
+                            <DynamicText>{item.variant?.size || item.variantSize}</DynamicText>
+                          </p>
+                        ) : null}
+                        {stock ? (
+                          <div
+                            className={`text-xs mt-1 space-y-0.5 ${outOfStock ? "text-red-600 font-medium" : "text-gray-600"}`}
+                          >
+                            {outOfStock ? (
+                              <p>{t("Out of stock")}</p>
+                            ) : (
+                              <>
+                                {typeof stock.qty === "number" ? (
+                                  <p>
+                                    {t("Stock")}: {stock.qty}
+                                  </p>
+                                ) : stock.isInStock === true ? (
+                                  <p>{t("In stock")}</p>
+                                ) : null}
+                                {typeof stock.maxQty === "number" && stock.maxQty > 0 ? (
+                                  <p className="text-gray-500">
+                                    {t("Max per order")}: {stock.maxQty}
+                                  </p>
+                                ) : null}
+                                {typeof stock.minQty === "number" && stock.minQty > 0 ? (
+                                  <p className="text-gray-500">
+                                    {t("Min order")}: {stock.minQty}
+                                  </p>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                        ) : null}
                         <div className="flex items-center gap-2 mt-1">
                           <button onClick={() => handleQuantityChange(item.id, item.quantity, "decrease")} disabled={updating === item.id || item.quantity === 1} className="w-7 h-7 flex items-center justify-center border border-gray-300 bg-gray-100 hover:bg-red-100 text-red-600 font-bold transition">
                             {updating === item.id ? <Loader2 size={14} className="animate-spin" /> : "−"}
                           </button>
                           <span className="w-6 text-center font-medium text-gray-800">{item.quantity}</span>
-                          <button onClick={() => handleQuantityChange(item.id, item.quantity, "increase")} disabled={updating === item.id} className="w-7 h-7 flex items-center justify-center border border-gray-300 bg-gray-100 hover:bg-green-100 text-green-600 font-bold transition">
+                          <button
+                            onClick={() => handleQuantityChange(item.id, item.quantity, "increase")}
+                            disabled={updating === item.id || atStockCap || outOfStock}
+                            title={atStockCap ? t("Maximum stock reached") : undefined}
+                            className="w-7 h-7 flex items-center justify-center border border-gray-300 bg-gray-100 hover:bg-green-100 text-green-600 font-bold transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
                             {updating === item.id ? <Loader2 size={14} className="animate-spin" /> : "+"}
                           </button>
                         </div>
                         <p className="text-sm font-bold text-green-600 mt-1">
-                          <PriceDisplay price={finalPrice * item.quantity} loading={currencyLoading} />
+                          <PriceDisplay price={lineTotal} loading={currencyLoading} />
                         </p>
                       </div>
                     </div>

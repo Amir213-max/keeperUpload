@@ -126,6 +126,13 @@
   "Your cart is empty 🛍️": "Your cart is empty 🛍️",
   "Remove": "Remove",
   "Recommended for you": "Recommended for you",
+  "Stock": "Stock",
+  "Out of stock": "Out of stock",
+  "In stock": "In stock",
+  "Min order": "Min order",
+  "Max per order": "Max per order",
+  "Size": "Size",
+  "Maximum stock reached": "Maximum stock reached",
   "Checkout →": "Checkout →",
   "Error loading product": "Error loading product",
   "Cart not found, please refresh.": "Cart not found, please refresh.",
@@ -180,6 +187,16 @@
   "✅ Quantity updated": "✅ Quantity updated",
   "Failed to update quantity": "Failed to update quantity",
   "✅ Added to cart!": "✅ Added to cart!",
-  "Show all": "Show all"
-
+  "Show all": "Show all",
+  "No product images": "No images",
+  "Image unavailable": "Image unavailable",
+  "No additional specifications": "No additional specifications are available for this product.",
+  "Description": "Description",
+  "Details": "Details",
+  "Author": "Author",
+  "Back to blogs": "Back to blogs",
+  "Blog not found": "This blog could not be found.",
+  "Discover latest articles": "Discover the latest news and articles",
+  "Blogs": "Blogs",
+  "Read More": "Read more"
 }

@@ -1,85 +1,51 @@
 import { Suspense } from "react";
-import { graphqlClient } from "../lib/graphqlClient";
-import { PRODUCTS_BY_CATEGORY_QUERY } from "../lib/queries";
-import { removeDuplicateProducts } from "../lib/removeDuplicateProducts";
+import { notFound } from "next/navigation";
 import Loader from "../Componants/Loader";
+import {
+  fetchCategoryListingByVertical,
+  fetchCategoryAttributeFacets,
+  DEFAULT_CATEGORY_PAGE_SIZE,
+} from "../lib/fetchCategoryListing";
+import { getListingPageQuery } from "../lib/categoryPageServer";
 import FootballClientPage from "./FootballBootsClientpage";
 
-// 🟢 يمكنك تغيير ID أو جعله Array لعرض أكتر من SubCategory
-const FOOTBALL_BOOTS_CATEGORY_ID = "54";
-
-/**
- * IMPORTANT: 
- * - The GraphQL schema does NOT support `limit` on `rootCategory.products`
- * - Must fetch products by categoryId to prevent 503 errors
- * - Client-side slicing (24 items) is applied after fetching
- */
-// 🟢 جلب المنتجات بالكامل (من الكاتيجوري + السب كاتيجوريز)
-const fetchProductsByCategory = async () => {
-  const variables = { 
-    categoryId: FOOTBALL_BOOTS_CATEGORY_ID
-  };
-  const data = await graphqlClient.request(PRODUCTS_BY_CATEGORY_QUERY, variables);
-
-  let products = data.rootCategory?.products || [];
-
-  // جمع منتجات الـ SubCategories
-  if (data.rootCategory?.subCategories) {
-    data.rootCategory.subCategories.forEach((sub) => {
-      if (sub.products && Array.isArray(sub.products)) {
-        products = [...products, ...sub.products];
-      }
-    });
-  }
-
-  // ✅ إزالة المنتجات المكررة بناءً على product.id
-  products = removeDuplicateProducts(products);
-
-  // ترتيب المنتجات بالأحدث
-  products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-  return { products, rootCategory: data.rootCategory };
-};
-
-export default async function Page() {
-  const { products, rootCategory } = await fetchProductsByCategory();
-
-  // ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-  // 🟢 جمع Attributes للفلترة
-  // ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-  const attributeMap = {};
-
-  products.forEach((product) => {
-    if (product.productAttributeValues) {
-      product.productAttributeValues.forEach((attr) => {
-        const label = attr.attribute?.label;
-        const value = attr.key;
-
-        if (label && value) {
-          if (!attributeMap[label]) attributeMap[label] = new Set();
-          attributeMap[label].add(value);
-        }
-      });
-    }
+async function load(searchParams) {
+  const { offset, page } = await getListingPageQuery(searchParams);
+  const result = await fetchCategoryListingByVertical("footballBoots", {
+    limit: DEFAULT_CATEGORY_PAGE_SIZE,
+    offset,
   });
+  if (result.notFound) notFound();
 
-  const attributeValues = Object.entries(attributeMap).map(([attribute, values]) => ({
-    attribute,
-    values: Array.from(values),
-  }));
+  const sorted = [...result.products].sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at)
+  );
+  return {
+    products: sorted,
+    rootCategory: result.rootCategory,
+    hasMore: result.hasMore,
+    categoryId: result.category.id,
+    pageSize: DEFAULT_CATEGORY_PAGE_SIZE,
+    page,
+  };
+}
 
-  // ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-  // 🟢 جمع البراندات
-  // ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-  const brands = [...new Set(products.map((p) => p.brand_name).filter(Boolean))];
+export default async function Page({ searchParams }) {
+  const { products, rootCategory, hasMore, categoryId, pageSize, page } = await load(searchParams);
+
+  const { brands, attributeValues } = await fetchCategoryAttributeFacets({ categoryId });
 
   return (
     <Suspense fallback={<Loader />}>
-      <FootballClientPage 
+      <FootballClientPage
         products={products}
         brands={brands}
         attributeValues={attributeValues}
         rootCategory={rootCategory}
+        categoryId={categoryId}
+        initialHasMore={hasMore}
+        listingPageSize={pageSize}
+        initialPage={page}
       />
     </Suspense>
   );

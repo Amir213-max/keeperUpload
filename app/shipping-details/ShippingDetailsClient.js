@@ -87,7 +87,7 @@ export default function ShippingDetailsClient() {
   };
 
   const handleViewOrders = () => {
-    router.push("/myprofile?tab=orders");
+    router.push("/profile?tab=orders");
   };
 
   const formatDate = (dateString) => {

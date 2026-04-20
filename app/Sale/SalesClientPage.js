@@ -361,7 +361,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import BrandsSlider from "../Componants/brandsSplide_1";
 import ProductSlider from "../Componants/ProductSlider";
 import Sidebar from "../Componants/sidebar";
@@ -370,22 +370,34 @@ import FilterDropdown from "../Componants/CheckboxDropdown ";
 import { useCurrency } from "../contexts/CurrencyContext";
 import PriceDisplay from "../components/PriceDisplay";
 import { graphqlClient } from "../lib/graphqlClient";
-import { GET_CATEGORIES_QUERY } from "../lib/queries";
+import { GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
+import { flattenCategoriesWithParentRefs } from "../lib/categoryResolve";
 import { useCategory } from "../contexts/CategoryContext";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import ServerPaginationControls from "../Componants/ServerPaginationControls";
+import { buildPathWithPage } from "../lib/paginationUrl";
+import { LISTING_PAGE_SIZE } from "../lib/listingConfig";
 
-export default function SalesClientPage({ products, brands, attributeValues }) {
+export default function SalesClientPage({
+  products,
+  brands,
+  attributeValues,
+  categoryId = null,
+  initialHasMore = false,
+  listingPageSize = LISTING_PAGE_SIZE,
+  initialPage = 1,
+}) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
 
   const [categories, setCategories] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [selectedAttributes, setSelectedAttributes] = useState({});
   const { selectedCategoryId, setSelectedCategoryId } = useCategory();
   const [selectedCategoryName, setSelectedCategoryName] = useState(null);
-  const [filteredProducts, setFilteredProducts] = useState(products);
-  const [currentPage, setCurrentPage] = useState(1);
-  const productsPerPage = 20;
+  const serverPage = initialPage;
+  const productsPerPage = listingPageSize;
   const { loading: currencyLoading } = useCurrency();
   const { t, language } = useTranslation();
   const isRTL = language === "ar";
@@ -416,7 +428,7 @@ export default function SalesClientPage({ products, brands, attributeValues }) {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const data = await graphqlClient.request(GET_CATEGORIES_QUERY);
+        const data = await graphqlClient.request(GET_CATEGORIES_ONLY_QUERY);
         setCategories(data.rootCategories || []);
       } catch (error) {
         console.error("Error fetching categories:", error);
@@ -425,9 +437,8 @@ export default function SalesClientPage({ products, brands, attributeValues }) {
     fetchCategories();
   }, []);
 
-  // 🔹 فلترة المنتجات حسب الفلاتر
-  useEffect(() => {
-    const result = products.filter((product) => {
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
       const brandMatch = !selectedBrand || product.brand_name === selectedBrand;
 
       const attrs = product.productAttributeValues || [];
@@ -444,32 +455,31 @@ export default function SalesClientPage({ products, brands, attributeValues }) {
         }
       );
 
-      const categoryMatch =
-        !selectedCategoryId ||
-        (product.rootCategories || []).some(
-          (cat) => String(cat.id) === String(selectedCategoryId)
-        );
-
-      return brandMatch && attributesMatch && categoryMatch;
+      return brandMatch && attributesMatch;
     });
+  }, [products, selectedBrand, selectedAttributes]);
 
-    setFilteredProducts(result);
-    setCurrentPage(1);
-  }, [products, selectedBrand, selectedAttributes, selectedCategoryId]);
+  const skipFilterPageResetRef = useRef(true);
+  useEffect(() => {
+    if (skipFilterPageResetRef.current) {
+      skipFilterPageResetRef.current = false;
+      return;
+    }
+    if (serverPage > 1) {
+      router.replace(buildPathWithPage(pathname, searchParams, 1));
+    }
+  }, [selectedBrand, selectedAttributes, selectedCategoryId, serverPage, pathname, searchParams, router]);
 
-  const categoriesWithProducts = useMemo(() => {
-    return categories.filter((cat) =>
-      products.some((product) =>
-        (product.rootCategories || []).some((pCat) => pCat.id === cat.id)
-      )
-    );
-  }, [categories, products]);
+  const categoriesForSidebar = useMemo(
+    () => flattenCategoriesWithParentRefs(categories),
+    [categories]
+  );
 
   // 🔹 ضبط اسم التصنيف المحدد
   useEffect(() => {
-    const cat = categoriesWithProducts.find((c) => c.id === selectedCategoryId);
+    const cat = categoriesForSidebar.find((c) => String(c.id) === String(selectedCategoryId));
     setSelectedCategoryName(cat?.name || null);
-  }, [selectedCategoryId, categoriesWithProducts]);
+  }, [selectedCategoryId, categoriesForSidebar]);
 
   // 🔹 تحديث الـ URL عند تغيير الفلاتر
   useEffect(() => {
@@ -482,13 +492,13 @@ export default function SalesClientPage({ products, brands, attributeValues }) {
       if (values.length) params.set(`attr_${attr}`, values.join(","));
     });
 
-    router.replace(`?${params.toString()}`, { scroll: false });
-  }, [selectedBrand, selectedCategoryId, selectedAttributes, router]);
+    router.replace(buildPathWithPage(pathname, params, 1), { scroll: false });
+  }, [selectedBrand, selectedCategoryId, selectedAttributes, pathname, router]);
 
-  const indexOfLastProduct = currentPage * productsPerPage;
-  const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
-  const currentProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct);
-  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+  const currentProducts =
+    filteredProducts.length > productsPerPage
+      ? filteredProducts.slice(0, productsPerPage)
+      : filteredProducts;
 
   return (
     <div className={`bg-[#373e3e] ${isRTL ? "rtl" : "ltr"}`}>
@@ -496,7 +506,7 @@ export default function SalesClientPage({ products, brands, attributeValues }) {
         {/* Sidebar */}
         <div className="hidden lg:block lg:col-span-1 bg-black h-auto">
           <Sidebar
-            categories={categoriesWithProducts}
+            categories={categoriesForSidebar}
             onSelectCategory={(catId) => {
               if (catId === selectedCategoryId) {
                 setSelectedCategoryId(null);
@@ -510,7 +520,7 @@ export default function SalesClientPage({ products, brands, attributeValues }) {
         </div>
 
         {/* Products Section */}
-        <div className="md:col-span-4 p-4 bg-white">
+        <div className="md:col-span-4 min-w-0 p-4 bg-white">
           <h1 className="text-4xl text-[#1f2323] p-2">
             {selectedCategoryName || t("Sales")}
           </h1>
@@ -605,57 +615,7 @@ export default function SalesClientPage({ products, brands, attributeValues }) {
             })}
           </div>
 
-          {totalPages > 1 && (
-            <div className="flex justify-center items-center gap-4 mt-6 select-none">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                disabled={currentPage === 1}
-                className="px-3 py-2 bg-gray-200 text-gray-700 disabled:opacity-50 hover:bg-gray-300 transition"
-              >
-                &#10094;
-              </button>
-
-              <div className="flex gap-2 overflow-x-auto scrollbar-none px-2">
-                {[...Array(totalPages)].map((_, idx) => {
-                  const pageNumber = idx + 1;
-                  if (
-                    pageNumber === 1 ||
-                    pageNumber === totalPages ||
-                    (pageNumber >= currentPage - 1 && pageNumber <= currentPage + 1)
-                  ) {
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => setCurrentPage(pageNumber)}
-                        className={`px-3 py-2 text-sm sm:text-base transition ${
-                          currentPage === pageNumber
-                            ? "bg-[#1f2323] text-white shadow-md"
-                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                        }`}
-                      >
-                        {pageNumber}
-                      </button>
-                    );
-                  } else if (
-                    pageNumber === currentPage - 2 ||
-                    pageNumber === currentPage + 2
-                  ) {
-                    return <span key={idx} className="px-2 text-gray-500">...</span>;
-                  } else {
-                    return null;
-                  }
-                })}
-              </div>
-
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="px-3 py-2 bg-gray-200 text-gray-700 disabled:opacity-50 hover:bg-gray-300 transition"
-              >
-                &#10095;
-              </button>
-            </div>
-          )}
+          <ServerPaginationControls serverPage={serverPage} hasMore={initialHasMore} />
         </div>
       </div>
     </div>

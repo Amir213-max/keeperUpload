@@ -54,6 +54,12 @@ export async function graphqlRequest(query, variables = {}, headers = {}) {
       throw new Error(result.error);
     }
 
+    /** بعض الاستجابات ترجع errors مع data — نرمي ليظهر خطأ واضح في الواجهة */
+    if (Array.isArray(result.errors) && result.errors.length > 0) {
+      const msg = result.errors.map((e) => e.message).filter(Boolean).join("; ");
+      throw new Error(msg || "GraphQL error");
+    }
+
     return result.data;
   } catch (error) {
     console.error("GraphQL Request Error:", error);

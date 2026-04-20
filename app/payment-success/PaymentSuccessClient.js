@@ -7,11 +7,11 @@ import { gql } from "graphql-request";
 import { CheckCircle, XCircle, Loader2, ShoppingBag, Home, Package } from "lucide-react";
 
 const VERIFY_PAYMENT = gql`
- mutation VerifyPayment($input: VerifyTapPaymentInput!) {
+ mutation VerifyPayment($input: VerifyPaymentInput!) {
   verifyTapPayment(input: $input) {
       success
       message
-      payment_status
+      tap_status
       order {
         id
         number
@@ -84,7 +84,7 @@ export default function PaymentSuccessClient() {
   };
 
   const handleViewOrders = () => {
-    router.push("/myprofile?tab=orders");
+    router.push("/profile?tab=orders");
   };
 
   // ✅ Handle SMSA Express Integration

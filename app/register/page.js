@@ -29,18 +29,41 @@ export default function RegisterPage() {
     );
   }
 
-  // 🔹 وظيفة لإضافة عنصر للكارت للمستخدم
+  /** إضافة سطر للكارت؛ لا ترمي — المنتج قد يكون محذوفًا من الـ API (مثل findOrFail) */
   async function addItemToUserCart(cartId, product) {
+    const productId = product.product_id ?? product.productId;
+    if (productId == null || productId === "") {
+      return { ok: false, reason: "missing_product_id" };
+    }
+    const variantId = product.variant_id ?? product.variantId;
+    if (variantId == null || variantId === "") {
+      return { ok: false, reason: "missing_variant_id" };
+    }
     const input = {
-      cart_id: cartId,
-      product_id: product.product_id,
-      quantity: product.quantity,
-      unit_price: product.unit_price || 0,
+      cart_id: String(cartId),
+      product_id: String(productId),
+      variant_id: String(variantId),
+      quantity: Math.max(1, parseInt(product.quantity, 10) || 1),
+      unit_price: Number(product.unit_price) || 0,
     };
     try {
       await graphqlClient.request(ADD_ITEM_TO_CART, { input });
+      return { ok: true };
     } catch (err) {
-      console.error("Error adding item to user cart:", err);
+      const gqlMsg =
+        err?.response?.errors?.[0]?.message ||
+        err?.response?.errors?.[0]?.extensions?.debugMessage ||
+        err?.message ||
+        "";
+      const missingProduct =
+        /no query results for model.*product/i.test(gqlMsg) ||
+        /product.*not found/i.test(gqlMsg);
+      if (missingProduct) {
+        console.warn(`[register] Guest cart merge skipped: product ${productId} no longer exists`);
+      } else {
+        console.warn(`[register] Guest cart merge failed for product ${productId}:`, gqlMsg || err);
+      }
+      return { ok: false, reason: missingProduct ? "product_not_found" : "api_error", detail: gqlMsg };
     }
   }
 
@@ -84,34 +107,49 @@ export default function RegisterPage() {
           email: data.signup.user.email 
         };
 
-     // 🔹 دمج Guest Cart مع كارت المستخدم الجديد (نسخة محسّنة)
-const guestCart = JSON.parse(localStorage.getItem("guest_cart")) || { lineItems: [] };
+        // 🔹 دمج Guest Cart مع كارت المستخدم (عناصر قديمة/محذوفة تُتخطّى دون كسر التسجيل)
+        const guestCart = JSON.parse(localStorage.getItem("guest_cart")) || { lineItems: [] };
+        let cartMergeWarning = "";
 
-if (guestCart.lineItems.length > 0) {
-  const userCartId = await fetchOrCreateUserCart(user.id);
+        if (guestCart.lineItems.length > 0) {
+          const userCartId = await fetchOrCreateUserCart(user.id);
+          let mergeFailed = 0;
 
-  for (const item of guestCart.lineItems) {
-    await addItemToUserCart(userCartId, {
-      product_id: item.product?.id || item.productId,
-      quantity: item.quantity,
-      unit_price: item.product?.price_range_exact_amount || 0,
-    });
-  }
+          for (const item of guestCart.lineItems) {
+            const unit =
+              Number(item.product?.list_price_amount) ||
+              Number(item.product?.price_range_exact_amount) ||
+              Number(item.unitPrice) ||
+              Number(item.price) ||
+              0;
+            const { ok } = await addItemToUserCart(userCartId, {
+              product_id: item.product?.id ?? item.productId,
+              variant_id: item.variantId ?? item.variant_id,
+              quantity: item.quantity,
+              unit_price: unit,
+            });
+            if (!ok) mergeFailed += 1;
+          }
 
-  // 🔹 مسح Guest Cart بعد الدمج
-  localStorage.removeItem("guest_cart");
-  localStorage.removeItem("guest_id");
-}
+          if (mergeFailed > 0) {
+            cartMergeWarning =
+              mergeFailed === guestCart.lineItems.length
+                ? " Some saved cart items are no longer available and were not added."
+                : ` ${mergeFailed} cart item(s) were unavailable and skipped; the rest were added.`;
+          }
+        }
 
-
-        // 🔹 مسح Guest Cart
+        localStorage.removeItem("guest_cart");
         localStorage.removeItem("guest_cart_items");
         localStorage.removeItem("guest_id");
 
         // 🔹 حفظ التوكن وبيانات المستخدم في AuthContext
         login(user, data.signup.token);
 
-        setToast({ type: "success", message: "🎉 Account created successfully!" });
+        setToast({
+          type: "success",
+          message: `🎉 Account created successfully!${cartMergeWarning}`,
+        });
 
         // 🔹 تحويل المستخدم للـ Home بعد ثانية واحدة
         setTimeout(() => router.push("/"), 1000);

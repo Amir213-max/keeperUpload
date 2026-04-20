@@ -17,6 +17,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
   const prevInitialFiltersRef = useRef(null);
   const prevSelectedFiltersRef = useRef(null);
   const isUpdatingFromInitialRef = useRef(false);
+  const hasMountedRef = useRef(false);
 
   // 🔹 مزامنة selectedFilters مع initialFilters
   // استخدام deep comparison للتحقق من التغييرات الفعلية
@@ -130,8 +131,15 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
     const currentSelectedFiltersStr = normalizeFilters(selectedFilters);
     const prevSelectedFiltersStr = prevSelectedFiltersRef.current;
     
+    // 🔹 لا تطلق onFilterChange عند أول mount لتجنب مسح deep-link filters
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      prevSelectedFiltersRef.current = currentSelectedFiltersStr;
+      return;
+    }
+
     // 🔹 استدعاء onFilterChange فقط إذا تغيرت selectedFilters فعلياً
-    if (prevSelectedFiltersStr === null || currentSelectedFiltersStr !== prevSelectedFiltersStr) {
+    if (currentSelectedFiltersStr !== prevSelectedFiltersStr) {
       prevSelectedFiltersRef.current = currentSelectedFiltersStr;
       onFilterChange(selectedFilters);
     }
@@ -145,7 +153,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
     <div className="space-y-4  w-full">
       {/* Desktop View - Flex Wrap */}
       <div className="hidden md:flex flex-wrap gap-2 items-center">
-        {visibleFilters.map(({ attribute, values }) => {
+        {visibleFilters.map(({ attribute, values, countsByValue }) => {
           const selectedValues = selectedFilters[attribute] || [];
           
           if (process.env.NODE_ENV === 'development' && attribute === 'Brand') {
@@ -157,6 +165,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
               key={attribute}
               attribute={attribute}
               values={values}
+              countsByValue={countsByValue}
               selected={selectedValues}
               onChange={(newSelected) => {
                 setSelectedFilters((prev) => ({
@@ -242,6 +251,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
             <Dropdown
               attribute={openDropdown}
               values={attributeValues.find(a => a.attribute === openDropdown)?.values || []}
+              countsByValue={attributeValues.find(a => a.attribute === openDropdown)?.countsByValue}
               selected={selectedFilters[openDropdown] || []}
               key={openDropdown}
               onChange={(newSelected) => {
@@ -288,7 +298,7 @@ export default function FilterDropdown({ attributeValues, onFilterChange, initia
   );
 }
 
-function Dropdown({ attribute, values, selected, onChange, isMobile = false, onClose }) {
+function Dropdown({ attribute, values, countsByValue, selected, onChange, isMobile = false, onClose }) {
   const { t } = useTranslation();
   // 🔹 تهيئة tempSelected من selected prop مباشرة
   const [tempSelected, setTempSelected] = useState(() => {
@@ -384,6 +394,11 @@ function Dropdown({ attribute, values, selected, onChange, isMobile = false, onC
     onChange(updated);
   };
 
+  /** Desktop: زر Done يطبّق الاختيار المؤقت قبل الإغلاق */
+  const confirmSelection = () => {
+    onChange(Array.isArray(tempSelected) ? [...tempSelected] : []);
+  };
+
   // على الموبايل، نعرض القائمة مباشرة بدون dropdown
   if (isMobile) {
     return (
@@ -414,7 +429,12 @@ function Dropdown({ attribute, values, selected, onChange, isMobile = false, onC
                   onChange={() => toggleOption(value)}
                   className="accent-blue-600"
                 />
-                <span><DynamicText>{value}</DynamicText></span>
+                <span>
+                  <DynamicText>{value}</DynamicText>
+                  {typeof countsByValue?.[value] === "number" && (
+                    <span className="text-gray-500 ms-1">({countsByValue[value]})</span>
+                  )}
+                </span>
               </div>
               {tempSelected.includes(value) && <CheckIcon className="w-4 h-4 text-blue-600" />}
             </label>
@@ -495,7 +515,12 @@ function Dropdown({ attribute, values, selected, onChange, isMobile = false, onC
                       onChange={() => toggleOption(value)}
                       className="accent-blue-600"
                     />
-                    <span><DynamicText>{value}</DynamicText></span>
+                    <span>
+                      <DynamicText>{value}</DynamicText>
+                      {typeof countsByValue?.[value] === "number" && (
+                        <span className="text-gray-500 ms-1">({countsByValue[value]})</span>
+                      )}
+                    </span>
                   </div>
                   {tempSelected.includes(value) && <CheckIcon className="w-4 h-4 text-blue-600" />}
                 </label>

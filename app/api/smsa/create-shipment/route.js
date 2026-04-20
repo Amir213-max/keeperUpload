@@ -1,22 +1,19 @@
 import { NextResponse } from "next/server";
+import { isSmsaMock } from "../smsaMock";
 
-// SMSA Express API Configuration
-const SMSA_API_ENDPOINT = process.env.NODE_ENV === "production"
-  ? "https://ecomapis.smsaexpress.com"
-  : "https://ecomapis-sandbox.azurewebsites.net";
+/** E-com base URL: env override, else production; use SMSA_USE_SANDBOX=true for legacy sandbox host. */
+function getSmsaEcomBaseUrl() {
+  const fromEnv = process.env.SMSA_ECOM_API_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (process.env.SMSA_USE_SANDBOX === "true") {
+    return "https://ecomapis-sandbox.azurewebsites.net";
+  }
+  return "https://ecomapis.smsaexpress.com";
+}
 
-// SMSA API Key - use the exact key provided (case-sensitive)
-// Note: Must restart Next.js server after adding/changing .env.local
-const SMSA_API_KEY = process.env.SMSA_API_KEY || "e984157a3da448f5bae9dc06d090500a";
-
-// Log API key source for debugging (only in development)
-if (process.env.NODE_ENV === "development") {
-  console.log("🔑 SMSA API Key Configuration:", {
-    fromEnv: !!process.env.SMSA_API_KEY,
-    keyLength: SMSA_API_KEY?.length,
-    keyPreview: SMSA_API_KEY ? SMSA_API_KEY.substring(0, 8) + "..." : "missing",
-    keyFull: SMSA_API_KEY, // Log full key for debugging
-  });
+function getSmsaApiKey() {
+  const key = process.env.SMSA_API_KEY?.trim();
+  return key || null;
 }
 
 /**
@@ -28,7 +25,7 @@ if (process.env.NODE_ENV === "development") {
  */
 export async function POST(request) {
   console.log("📦 SMSA create-shipment route POST called at:", new Date().toISOString());
-  
+
   try {
     const body = await request.json();
     const {
@@ -196,6 +193,37 @@ export async function POST(request) {
       );
     }
 
+    if (isSmsaMock()) {
+      const ref = String(orderNumber || orderId);
+      const tracking = `MOCK${Date.now().toString(36).toUpperCase()}`;
+      if (process.env.NODE_ENV === "development") {
+        console.log("📦 SMSA_MOCK create-shipment ok:", ref);
+      }
+      return NextResponse.json({
+        success: true,
+        shipmentId: `mock-${ref}`,
+        trackingNumber: tracking,
+        awb: tracking,
+        message:
+          "Mock shipment (SMSA_MOCK=true). Set SMSA_MOCK=false when using the real SMSA API.",
+        mock: true,
+        data: { OrderNumber: ref, AWB: tracking },
+      });
+    }
+
+    const SMSA_API_KEY = getSmsaApiKey();
+    const SMSA_API_ENDPOINT = getSmsaEcomBaseUrl();
+
+    if (!SMSA_API_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "SMSA_API_KEY is not set. Add it to .env.local and restart the dev server, or set SMSA_MOCK=true for tests.",
+        },
+        { status: 500 }
+      );
+    }
+
     console.log("📦 SMSA API Request:", {
       endpoint: `${SMSA_API_ENDPOINT}/api/shipment/b2c/new`,
       hasApiKey: !!SMSA_API_KEY,
@@ -217,26 +245,12 @@ export async function POST(request) {
         "apikey": SMSA_API_KEY, // Must be 'apikey' (lowercase) as per SMSA docs
       };
 
-      console.log("🔑 SMSA API Key Info:", {
-        hasKey: !!SMSA_API_KEY,
-        keyLength: SMSA_API_KEY?.length,
-        keyFull: SMSA_API_KEY, // Log full key for debugging
-        endpoint: `${SMSA_API_ENDPOINT}/api/shipment/b2c/new`,
-        headerName: "apikey",
-        headersSent: Object.keys(headers),
-        headerValue: headers.apikey, // Log the actual header value being sent
-        nodeEnv: process.env.NODE_ENV,
-      });
-
-      console.log("📤 SMSA Request Details:", {
-        url: `${SMSA_API_ENDPOINT}/api/shipment/b2c/new`,
-        method: "POST",
-        headers: {
-          "Content-Type": headers["Content-Type"],
-          "apikey": headers.apikey ? headers.apikey.substring(0, 8) + "..." : "missing",
-        },
-        payloadKeys: Object.keys(smsaPayload),
-      });
+      if (process.env.NODE_ENV === "development") {
+        console.log("🔑 SMSA request:", {
+          endpoint: `${SMSA_API_ENDPOINT}/api/shipment/b2c/new`,
+          keyPreview: `${SMSA_API_KEY.substring(0, 6)}…`,
+        });
+      }
 
       smsaResponse = await fetch(`${SMSA_API_ENDPOINT}/api/shipment/b2c/new`, {
         method: "POST",
@@ -344,6 +358,14 @@ export async function POST(request) {
         errorMessage = responseText.substring(0, 200);
       }
 
+      if (smsaResponse.status === 401) {
+        errorMessage =
+          "SMSA returned 401 Unauthorized: this API key is not accepted for B2C at the configured base URL. " +
+          "Confirm with SMSA that the key is enabled for e-com REST, and set SMSA_ECOM_API_URL to the host they gave you " +
+          "(production https://ecomapis.smsaexpress.com vs sandbox). " +
+          `Original: ${errorMessage}`;
+      }
+
       return NextResponse.json(
         {
           success: false,
@@ -401,11 +423,15 @@ export async function POST(request) {
 // Add GET method for testing
 export async function GET(request) {
   console.log("📦 SMSA create-shipment route GET called at:", new Date().toISOString());
+  const base = getSmsaEcomBaseUrl();
   return NextResponse.json({
     message: "SMSA create-shipment route is working",
     endpoint: "/api/smsa/create-shipment",
     method: "POST",
-    smsaEndpoint: `${process.env.NODE_ENV === "production" ? "https://ecomapis.smsaexpress.com" : "https://ecomapis-sandbox.azurewebsites.net"}/api/shipment/b2c/new`,
+    smsaEndpoint: `${base}/api/shipment/b2c/new`,
+    smsaBaseUrl: base,
+    hasApiKey: Boolean(getSmsaApiKey()),
+    smsaMock: isSmsaMock(),
     timestamp: new Date().toISOString(),
   });
 }

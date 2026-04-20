@@ -103,6 +103,13 @@
   "Your cart is empty 🛍️": "سلة التسوق فارغة 🛍️",
   "Remove": "حذف",
   "Recommended for you": "موصى به لك",
+  "Stock": "المخزون",
+  "Out of stock": "غير متوفر",
+  "In stock": "متوفر",
+  "Min order": "الحد الأدنى للطلب",
+  "Max per order": "الحد الأقصى لكل طلب",
+  "Size": "المقاس",
+  "Maximum stock reached": "وصلت للحد الأقصى للمخزون",
   "Checkout →": "إتمام الطلب →",
   "Error loading product": "خطأ في تحميل المنتج",
   "Cart not found, please refresh.": "السلة غير موجودة، يرجى تحديث الصفحة.",
@@ -182,6 +189,17 @@
   "✅ Quantity updated": "✅ تم تحديث الكمية",
   "Failed to update quantity": "حدث خطأ أثناء تحديث الكمية",
   "✅ Added to cart!": "✅ تم إضافة المنتج للسلة!",
-  "Show all": "عرض الكل"
-  }
+  "Show all": "عرض الكل",
+  "No product images": "لا توجد صور",
+  "Image unavailable": "تعذر تحميل الصورة",
+  "No additional specifications": "لا توجد مواصفات إضافية متاحة لهذا المنتج.",
+  "Description": "الوصف",
+  "Details": "التفاصيل",
+  "Author": "الكاتب",
+  "Back to blogs": "العودة إلى المدونات",
+  "Blog not found": "تعذر العثور على هذه المدونة.",
+  "Discover latest articles": "اكتشف آخر الأخبار والمقالات",
+  "Blogs": "المدونات",
+  "Read More": "اقرأ المزيد"
+}
   

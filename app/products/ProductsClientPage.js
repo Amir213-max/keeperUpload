@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 // import BrandsSlider from "../Componants/brandsSplide_1";
 import ProductSlider from "../Componants/ProductSlider";
 import Sidebar from "../Componants/sidebar";
@@ -12,12 +12,37 @@ import PriceDisplay from "../components/PriceDisplay";
 import DynamicText from "../components/DynamicText";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
+import { flattenCategoriesWithParentRefs } from "../lib/categoryResolve";
+import { getProductsListingBannerContext } from "../lib/productListingBannerContext";
 import { useCategory } from "../contexts/CategoryContext";
 import { useProductFilters } from "../hooks/useProductFilters";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { buildPathSegmentUrl, parsePathSegments, parseBrandFromPathSegments, fromSlug } from "../lib/urlSlugHelper";
+import {
+  buildPathSegmentUrl,
+  parsePathSegments,
+  parseBrandFromPathSegments,
+  fromSlug,
+  toSlug,
+} from "../lib/urlSlugHelper";
+import ServerPaginationControls from "../Componants/ServerPaginationControls";
+import { buildPathWithPage } from "../lib/paginationUrl";
+import { LISTING_PAGE_SIZE } from "../lib/listingConfig";
+import CategoryListingBanner from "../Componants/CategoryListingBanner";
+import BrandCategoryCovers from "../Componants/BrandCategoryCovers";
 
-export default function ProductsClientPage({ products, brands, attributeValues, categoryId: initialCategoryId, categorySlug: initialCategorySlug, rootCategory, currentPage: initialPage = 1, totalCount = 0, hasMore = false, initialFilters = [] }) {
+export default function ProductsClientPage({
+  products,
+  brands,
+  attributeValues,
+  categoryId: initialCategoryId,
+  categorySlug: initialCategorySlug,
+  rootCategory,
+  currentPage: initialPage = 1,
+  totalCount = 0,
+  hasMore = false,
+  initialFilters = [],
+  listingPageSize = LISTING_PAGE_SIZE,
+}) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -27,11 +52,8 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
   const selectedCategoryId = categoryContext?.selectedCategoryId || null;
   const setSelectedCategoryId = categoryContext?.setSelectedCategoryId || (() => {});
   const [selectedCategoryName, setSelectedCategoryName] = useState(null);
-  const [currentPage, setCurrentPage] = useState(() => {
-    const pageParam = searchParams.get('page');
-    return pageParam ? parseInt(pageParam, 10) : initialPage;
-  });
-  const productsPerPage = 30;
+  const serverPage = initialPage;
+  const productsPerPage = listingPageSize;
   const hasInitializedFromUrlRef = useRef(false);
   const lastParsedFiltersRef = useRef(null); // Track last parsed filters to prevent re-parsing
   const { loading: currencyLoading } = useCurrency();
@@ -56,13 +78,25 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     fetchCategories();
   }, []);
 
-  const categoriesWithProducts = useMemo(() => {
-    return categories.filter((cat) =>
-      products.some((product) =>
-        (product.rootCategories || []).some((pCat) => pCat.id === cat.id)
-      )
-    );
-  }, [categories, products]);
+  const categoriesForSidebar = useMemo(
+    () => flattenCategoriesWithParentRefs(categories),
+    [categories]
+  );
+
+  /** يطابق `?brand=adidas` مع `brand_name` الفعلي من القائمة (تجاهل حالة الأحرف و fromSlug). */
+  const resolveBrandFromQuerySlug = useCallback((brandSlug, brandsList) => {
+    if (!brandSlug || !brandsList?.length) return null;
+    const decoded = decodeURIComponent(String(brandSlug).trim());
+    if (!decoded) return null;
+    const target = toSlug(decoded).toLowerCase();
+    for (const b of brandsList) {
+      const name =
+        typeof b === "string" ? b : b?.brand_name ?? b?.name ?? null;
+      if (!name) continue;
+      if (toSlug(String(name)).toLowerCase() === target) return String(name);
+    }
+    return fromSlug(decoded);
+  }, []);
 
   // Use unified filter hook (ProductsClientPage only uses /products/ routes)
   // Let the hook handle URL updates automatically for better efficiency (like main pages)
@@ -70,6 +104,7 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     selectedBrand,
     selectedAttributes,
     selectedCategorySlug,
+    setSelectedCategorySlug,
     handleBrandChange,
     handleAttributesChange,
     setSelectedBrand,
@@ -77,12 +112,19 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
   } = useProductFilters({
     brands,
     attributeValues,
-    categoriesWithProducts,
+    categoriesWithProducts: categoriesForSidebar,
     basePath: null, // null means it will auto-detect from pathname (/products/[slug])
     setSelectedCategoryId,
     selectedCategoryId,
     disableUrlUpdates: false, // Let hook handle URL updates automatically (like main pages)
   });
+
+  const displayBrandForCovers = useMemo(() => {
+    if (selectedBrand) return selectedBrand;
+    const bs = selectedAttributes?.Brand;
+    if (Array.isArray(bs) && bs.length === 1) return bs[0];
+    return null;
+  }, [selectedBrand, selectedAttributes]);
 
   // Create refs for selectedBrand and selectedAttributes to use in comparisons
   const selectedBrandRef = useRef(selectedBrand);
@@ -255,13 +297,13 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     if (searchParams && brands.length > 0) {
       const brandSlug = searchParams.get("brand");
       if (brandSlug) {
-        const brandName = fromSlug(brandSlug);
+        const brandName = resolveBrandFromQuerySlug(brandSlug, brands);
         if (brandName && brandName !== selectedBrandRef.current) {
           setSelectedBrand(brandName);
         }
       }
     }
-  }, [brands, attributeValues, pathname, searchParams, initialFilters]);
+  }, [brands, attributeValues, pathname, searchParams, initialFilters, resolveBrandFromQuerySlug]);
 
 
   // Set initial category from URL path or props (only if not set by hook)
@@ -282,13 +324,8 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     const categorySlugToUse = initialCategorySlug || pathSlug;
     
     if (categorySlugToUse && categorySlugToUse !== 'products' && categorySlugToUse !== '') {
-      // 🔹 Search in all categories first (not just categoriesWithProducts)
-      // This ensures category is found even if products haven't loaded yet
-      const foundCategory = categories.find(
-        (cat) => cat.slug === decodeURIComponent(categorySlugToUse)
-      ) || categoriesWithProducts.find(
-        (cat) => cat.slug === decodeURIComponent(categorySlugToUse)
-      );
+      const slugDecoded = decodeURIComponent(categorySlugToUse);
+      const foundCategory = categoriesForSidebar.find((cat) => cat.slug === slugDecoded);
       if (foundCategory) {
         // Set both ID and slug to ensure URL updates work correctly
         if (foundCategory.id !== selectedCategoryId) {
@@ -296,17 +333,14 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
         }
       }
     } else if (initialCategoryId) {
-      // 🔹 Search in all categories first (not just categoriesWithProducts)
-      const foundCategory = categories.find(
-        (cat) => cat.id === initialCategoryId
-      ) || categoriesWithProducts.find(
-        (cat) => cat.id === initialCategoryId
+      const foundCategory = categoriesForSidebar.find(
+        (cat) => String(cat.id) === String(initialCategoryId)
       );
       if (foundCategory) {
         setSelectedCategoryId(initialCategoryId);
       }
     }
-  }, [pathname, setSelectedCategoryId, initialCategoryId, initialCategorySlug, categories, categoriesWithProducts, selectedCategoryId]);
+  }, [pathname, setSelectedCategoryId, initialCategoryId, initialCategorySlug, categoriesForSidebar, selectedCategoryId]);
 
   // 🔹 فلترة المنتجات حسب الفلاتر - استخدام useMemo لتحسين الأداء وتطبيق الفلاتر فوراً
   const filteredProducts = useMemo(() => {
@@ -318,8 +352,11 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
         const selectedBrands = selectedAttributes["Brand"].map((b) => String(b).toLowerCase().trim());
         brandMatch = product.brand_name && selectedBrands.includes(String(product.brand_name).toLowerCase().trim());
       } else if (selectedBrand) {
-        // Single brand selected
-        brandMatch = product.brand_name === selectedBrand;
+        const pb = product.brand_name
+          ? String(product.brand_name).toLowerCase().trim()
+          : "";
+        const sb = String(selectedBrand).toLowerCase().trim();
+        brandMatch = Boolean(pb && sb && pb === sb);
       }
 
       const attrs = product.productAttributeValues || [];
@@ -346,13 +383,7 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
         }
       );
 
-      const categoryMatch =
-        !selectedCategoryId ||
-        (product.rootCategories || []).some(
-          (cat) => String(cat.id) === String(selectedCategoryId)
-        );
-
-      return brandMatch && attributesMatch && categoryMatch;
+      return brandMatch && attributesMatch;
     });
     
     // Debug: Log filtering results
@@ -366,114 +397,40 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     }
     
     return filtered;
-  }, [products, selectedBrand, selectedAttributes, selectedCategoryId]);
+  }, [products, selectedBrand, selectedAttributes]);
 
-  // Reset to page 1 when filters change
+  const skipFilterPageResetRef = useRef(true);
   useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedBrand, selectedAttributes, selectedCategoryId]);
+    if (skipFilterPageResetRef.current) {
+      skipFilterPageResetRef.current = false;
+      return;
+    }
+    if (serverPage > 1) {
+      router.replace(buildPathWithPage(pathname, searchParams, 1));
+    }
+  }, [selectedBrand, selectedAttributes, selectedCategoryId, serverPage, pathname, searchParams, router]);
 
   const [currentRootCategory, setCurrentRootCategory] = useState(rootCategory);
 
   useEffect(() => {
-    const cat = categoriesWithProducts.find((c) => c.id === selectedCategoryId);
+    const cat = categoriesForSidebar.find((c) => String(c.id) === String(selectedCategoryId));
     setSelectedCategoryName(cat?.name || null);
-    
-    // 🔹 تحديث rootCategory عند اختيار category جديد
-    if (cat) {
-      // البحث عن rootCategory من categories (يحتوي على image)
-      const fullCategory = categories.find((c) => c.id === selectedCategoryId);
-      setCurrentRootCategory(fullCategory || null);
-    } else {
-      setCurrentRootCategory(null);
-    }
-  }, [selectedCategoryId, categoriesWithProducts, categories]);
+  }, [selectedCategoryId, categoriesForSidebar]);
 
-  // 🔹 تحديث rootCategory من props عند تغييرها
   useEffect(() => {
     if (rootCategory) {
       setCurrentRootCategory(rootCategory);
     }
   }, [rootCategory]);
 
-  // 🔹 Track initial load to prevent URL updates on mount
-  const isInitialLoadRef = useRef(true);
-  const hasParsedInitialUrlRef = useRef(false);
-  
-  // Parse URL on initial load
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    
-    const currentPath = window.location.pathname;
-    if (currentPath && currentPath.startsWith('/products/')) {
-      const pathWithoutBase = currentPath.replace('/products/', '').split('?')[0];
-      const parts = pathWithoutBase.split('/').filter(p => p);
-      
-      if (parts.length > 1) {
-        // There are filters in the URL
-        hasParsedInitialUrlRef.current = true;
-      }
-    }
-    
-    // Mark initial load as complete after a short delay
-    setTimeout(() => {
-      isInitialLoadRef.current = false;
-    }, 2000); // 🔹 تأخير 2 ثانية لضمان عدم تحديث URL على initial load
-  }, []);
-
-  // 🔹 URL updates are now handled automatically by useProductFilters hook (like main pages)
-  // The hook handles filter URL updates using buildPathSegmentUrl
-  // For pagination, we sync with URL but the hook's updateUrlFromState handles filters
-  // This ensures sub-pages work exactly like main pages for URL updates
-
-  // Update currentPage when URL changes (sync with URL like main pages)
-  useEffect(() => {
-    const pageParam = searchParams.get('page');
-    if (pageParam) {
-      const page = parseInt(pageParam, 10);
-      if (page !== currentPage && page > 0) {
-        setCurrentPage(page);
-      }
-    } else if (currentPage !== 1) {
-      setCurrentPage(1);
-    }
-  }, [searchParams, currentPage]);
-  
-  // 🔹 Sync pagination with URL when page changes (same logic as main pages for filters)
-  // This ensures URL reflects current page for shareable links, just like filters update URL
-  useEffect(() => {
-    // Skip on initial load
-    if (isInitialLoadRef.current) return;
-    
-    // Get current page from URL
-    const currentPageParam = searchParams.get('page');
-    const currentPageNum = currentPageParam ? parseInt(currentPageParam, 10) : 1;
-    
-    // Only update URL if page changed (not from URL) and we have a category slug
-    if (currentPage !== currentPageNum && currentPage > 0 && selectedCategorySlug) {
-      // Build URL with updated page using buildPathSegmentUrl (same as main pages use for filters)
-      const newUrl = buildPathSegmentUrl(
-        selectedCategorySlug,
-        selectedAttributes,
-        selectedBrand,
-        currentPage > 1 ? currentPage : null
-      );
-      
-      if (newUrl) {
-        const currentFullUrl = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : '');
-        if (newUrl !== currentFullUrl) {
-          router.replace(newUrl, { scroll: false });
-        }
-      }
-    }
-  }, [currentPage, selectedCategorySlug, selectedAttributes, selectedBrand, pathname, searchParams, router]);
-
-  // استخدام المنتجات المفلترة مع pagination
-  // 🔹 تطبيق pagination على المنتجات المفلترة
-  const indexOfLastProduct = currentPage * productsPerPage;
-  const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
-  const currentProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct);
-  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+  const currentProducts =
+    filteredProducts.length > productsPerPage
+      ? filteredProducts.slice(0, productsPerPage)
+      : filteredProducts;
+  const memoizedInitialFilters = useMemo(
+    () => ({ ...selectedAttributes }),
+    [selectedAttributes]
+  );
 
   // 🔹 معالجة URL الصورة
   const getImageUrl = (image) => {
@@ -483,16 +440,47 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
     return `https://keepersport.store/storage/${image}`;
   };
 
+  const productsPathFirstSlug = useMemo(() => {
+    if (!pathname?.startsWith("/products/")) return null;
+    const rest = pathname.slice("/products/".length).split("?")[0];
+    const parts = rest.split("/").filter(Boolean);
+    return parts[0] || null;
+  }, [pathname]);
+
+  const { rootForMeta, selectedLeaf } = useMemo(
+    () =>
+      getProductsListingBannerContext(
+        categories,
+        selectedCategoryId,
+        productsPathFirstSlug
+      ),
+    [categories, selectedCategoryId, productsPathFirstSlug]
+  );
+
+  const categoryImageRaw =
+    selectedLeaf?.image ??
+    rootForMeta?.image ??
+    currentRootCategory?.image ??
+    null;
+  const categoryBannerSrc = categoryImageRaw ? getImageUrl(categoryImageRaw) : null;
+
+  const coversSource =
+    rootForMeta?.brand_category_covers ??
+    currentRootCategory?.brand_category_covers ??
+    [];
+  const rootCategoryIdForCovers =
+    rootForMeta?.id ?? currentRootCategory?.id ?? null;
+
   return (
     <div className={`bg-[#373e3e] ${isRTL ? "rtl" : "ltr"}`}>
       <div className="grid pt-1 grid-cols-1 lg:grid-cols-5">
         {/* Sidebar */}
         <div className="hidden lg:block lg:col-span-1 bg-black h-auto">
           <Sidebar
-            categories={categoriesWithProducts.length > 0 ? categoriesWithProducts : categories}
+            categories={categoriesForSidebar.length > 0 ? categoriesForSidebar : categories}
             onSelectCategory={(catId) => {
               // 🔹 استخدام router.push مع slug في path للتنقل بسلاسة
-              const allCategories = categoriesWithProducts.length > 0 ? categoriesWithProducts : categories;
+              const allCategories = categoriesForSidebar.length > 0 ? categoriesForSidebar : categories;
               const selectedCat = allCategories.find((c) => c.id === catId);
               if (selectedCat) {
               if (catId === selectedCategoryId) {
@@ -520,22 +508,30 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
         </div>
 
         {/* Products Section */}
-        <div className="md:col-span-4 p-4 bg-white">
+        <div className="md:col-span-4 min-w-0 p-4 bg-white">
           {/* 🟢 عرض صورة rootCategory فوق المنتجات */}
           <h1 className="text-4xl text-[#1f2323] p-2">
             {selectedCategoryName || t("All Products")}
           </h1>
-          {currentRootCategory?.image && (
-            <div className="w-full mb-4">
-              <img 
-                src={getImageUrl(currentRootCategory.image)}
-                alt={currentRootCategory.name || "Category Banner"}
-                className="w-full h-auto object-cover"
-              />
-            </div>
+          {categoryBannerSrc && (
+            <CategoryListingBanner
+              src={categoryBannerSrc}
+              alt={currentRootCategory.name || "Category Banner"}
+            />
           )}
 
-         
+          {displayBrandForCovers &&
+            !categoryBannerSrc &&
+            Array.isArray(coversSource) &&
+            coversSource.length > 0 && (
+              <BrandCategoryCovers
+                covers={coversSource}
+                getImageUrl={getImageUrl}
+                selectedBrand={displayBrandForCovers}
+                selectedCategoryId={selectedCategoryId}
+                rootCategoryId={rootCategoryIdForCovers}
+              />
+            )}
 
           {/* <BrandsSlider
             brands={brands}
@@ -550,6 +546,7 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
             <FilterDropdown
               attributeValues={attributeValues}
               onFilterChange={handleAttributesChange}
+              initialFilters={memoizedInitialFilters}
             />
           </div>
 
@@ -601,7 +598,11 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
                   )}
 
                   <div className="flex justify-center items-center h-[220px] relative">
-                    <ProductSlider images={product.images} productName={product.name} />
+                    <ProductSlider
+                      key={`${product.id || product.sku}-${displayBrandForCovers || ""}-${(selectedAttributes["Brand"] || []).join(",")}`}
+                      images={product.images}
+                      productName={product.name}
+                    />
                   </div>
 
                   <div className="p-4 flex flex-col flex-grow justify-between">
@@ -636,65 +637,7 @@ export default function ProductsClientPage({ products, brands, attributeValues, 
             )}
           </div>
 
-          {totalPages > 1 && (
-            <div className="flex justify-center items-center gap-4 mt-6 select-none">
-              <button
-                onClick={() => {
-                  const newPage = Math.max(currentPage - 1, 1);
-                  setCurrentPage(newPage);
-                }}
-                disabled={currentPage === 1}
-                className="px-3 py-2 bg-gray-200 text-gray-700 disabled:opacity-50 hover:bg-gray-300 transition"
-              >
-                &#10094;
-              </button>
-
-              <div className="flex gap-2 overflow-x-auto scrollbar-none px-2">
-                {[...Array(totalPages)].map((_, idx) => {
-                  const pageNumber = idx + 1;
-                  if (
-                    pageNumber === 1 ||
-                    pageNumber === totalPages ||
-                    (pageNumber >= currentPage - 1 && pageNumber <= currentPage + 1)
-                  ) {
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          setCurrentPage(pageNumber);
-                        }}
-                        className={`px-3 py-2 text-sm sm:text-base transition ${
-                          currentPage === pageNumber
-                            ? "bg-[#1f2323] text-white shadow-md"
-                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                        }`}
-                      >
-                        {pageNumber}
-                      </button>
-                    );
-                  } else if (
-                    pageNumber === currentPage - 2 ||
-                    pageNumber === currentPage + 2
-                  ) {
-                    return <span key={idx} className="px-2 text-gray-500">...</span>;
-                  } else {
-                    return null;
-                  }
-                })}
-              </div>
-
-              <button
-                onClick={() => {
-                  const newPage = Math.min(currentPage + 1, totalPages);
-                  setCurrentPage(newPage);
-                }}
-                disabled={currentPage === totalPages}
-                className="px-3 py-2 bg-gray-200 text-gray-700 disabled:opacity-50 hover:bg-gray-300 transition"
-              >
-                &#10095;
-              </button>
-            </div>
-          )}
+          <ServerPaginationControls serverPage={serverPage} hasMore={hasMore} />
         </div>
       </div>
     </div>

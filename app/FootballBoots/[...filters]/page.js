@@ -1,68 +1,41 @@
 import { Suspense } from "react";
-import { graphqlClient } from "../../lib/graphqlClient";
-import { PRODUCTS_BY_CATEGORY_QUERY } from "../../lib/queries";
-import { removeDuplicateProducts } from "../../lib/removeDuplicateProducts";
-import Loader from "../../Componants/Loader";
+import { notFound } from "next/navigation";
 import FootballClientPage from "../FootballBootsClientpage";
+import Loader from "../../Componants/Loader";
+import {
+  fetchCategoryListingByVertical,
+  fetchCategoryAttributeFacets,
+  DEFAULT_CATEGORY_PAGE_SIZE,
+} from "../../lib/fetchCategoryListing";
+import { getListingPageQuery } from "../../lib/categoryPageServer";
 
-const FOOTBALL_BOOTS_CATEGORY_ID = "54";
-
-const fetchProductsByCategory = async () => {
-  const variables = { 
-    categoryId: FOOTBALL_BOOTS_CATEGORY_ID
-  };
-  const data = await graphqlClient.request(PRODUCTS_BY_CATEGORY_QUERY, variables);
-
-  let products = data.rootCategory?.products || [];
-
-  if (data.rootCategory?.subCategories) {
-    data.rootCategory.subCategories.forEach((sub) => {
-      if (sub.products && Array.isArray(sub.products)) {
-        products = [...products, ...sub.products];
-      }
-    });
-  }
-
-  products = removeDuplicateProducts(products);
-  products.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-  return { products, rootCategory: data.rootCategory };
-};
-
-export default async function Page({ params }) {
-  // 🔹 استخدام نفس البيانات من الصفحة الأساسية
-  // 🔹 الفلترة تعمل على البيانات المحملة مسبقاً في الـ client-side
-  const { products, rootCategory } = await fetchProductsByCategory();
-
-  const attributeMap = {};
-  products.forEach((product) => {
-    if (product.productAttributeValues) {
-      product.productAttributeValues.forEach((attr) => {
-        const label = attr.attribute?.label;
-        const value = attr.key;
-
-        if (label && value) {
-          if (!attributeMap[label]) attributeMap[label] = new Set();
-          attributeMap[label].add(value);
-        }
-      });
-    }
+export default async function Page({ searchParams }) {
+  const { offset, page } = await getListingPageQuery(searchParams);
+  const result = await fetchCategoryListingByVertical("footballBoots", {
+    limit: DEFAULT_CATEGORY_PAGE_SIZE,
+    offset,
   });
+  if (result.notFound) notFound();
 
-  const attributeValues = Object.entries(attributeMap).map(([attribute, values]) => ({
-    attribute,
-    values: Array.from(values),
-  }));
+  const sorted = [...result.products].sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at)
+  );
 
-  const brands = [...new Set(products.map((p) => p.brand_name).filter(Boolean))];
+  const { brands, attributeValues } = await fetchCategoryAttributeFacets({
+    categoryId: result.category.id,
+  });
 
   return (
     <Suspense fallback={<Loader />}>
-      <FootballClientPage 
-        products={products}
+      <FootballClientPage
+        products={sorted}
         brands={brands}
         attributeValues={attributeValues}
-        rootCategory={rootCategory}
+        rootCategory={result.rootCategory}
+        categoryId={result.category.id}
+        initialHasMore={result.hasMore}
+        listingPageSize={DEFAULT_CATEGORY_PAGE_SIZE}
+        initialPage={page}
       />
     </Suspense>
   );

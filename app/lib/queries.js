@@ -1,16 +1,20 @@
 import { gql } from "graphql-request";
 
-// ✅ جلب كل الـ Main Root Categories (العناوين الرئيسية + الفرعية)
+/** Schema: Query.mainRootCategories — جذور is_main مع الفرعيات للـ Sidebar */
 export const MAIN_ROOT_CATEGORIES_QUERY = gql`
   query MainRootCategories {
     mainRootCategories {
       id
       name
       slug
+      order
+      is_main
+      show_brands_in_menu
       subCategories {
         id
         name
         slug
+        order
       }
     }
   }
@@ -62,9 +66,10 @@ export const GET_PROFILE = gql`
       id
       name
       email
-      orders {
-        id
-      }
+      phone
+      date_of_birth
+      gender
+      avatar
       created_at
       updated_at
     }
@@ -77,8 +82,8 @@ export const GET_PROFILE = gql`
  * DO NOT USE: Fetching all products without categoryId causes server overload.
  * 
  * Use instead:
- * - PRODUCTS_BY_CATEGORY_QUERY with a specific categoryId
- * - PRODUCTS_BY_CATEGORY_FILTERED_QUERY for pagination with categoryId
+ * - Query.productsWithFilters via PRODUCTS_WITH_FILTERS_LISTING_QUERY (see app/lib/fetchCategoryListing.js)
+ * - PRODUCTS_BY_CATEGORY_FILTERED_QUERY (Query.productsByCategory) for pagination
  */
 export const PRODUCTS_QUERY = gql`
   query Products($limit: Int, $offset: Int) {
@@ -104,16 +109,10 @@ export const PRODUCTS_QUERY = gql`
 `;
 
 /**
- * ✅ جلب المنتجات حسب الكاتيجوري
- * 
- * IMPORTANT: 
- * - The GraphQL schema does NOT support `limit` on `rootCategory.products`
- * - Must use `productsByCategory(categoryId: $categoryId)` at root level
- * - Client-side slicing (12-24 items) should be applied after fetching
- * - Fetching products without categoryId causes 503 errors
- * 
- * This query fetches ONLY essential fields for product listing pages.
- * Heavy fields (descriptions, full attributes) should be fetched on product detail pages only.
+ * LEGACY — avoid for listings.
+ * Schema: Query.rootCategory(id) with nested products (no limit on nested products — can overload API).
+ * Prefer: Query.productsWithFilters (PRODUCTS_WITH_FILTERS_LISTING_QUERY) or Query.productsByCategory.
+ * Kept only for backward compatibility; no remaining in-app imports after category listing refactor.
  */
 export const PRODUCTS_BY_CATEGORY_QUERY = gql`
 query ProductsByCategory($categoryId: ID!) {
@@ -198,10 +197,8 @@ query ProductsByCategory($categoryId: ID!) {
 `;
 
 /**
- * ✅ جلب المنتجات حسب الكاتيجوري باستخدام productsByCategory (root level)
- * 
- * This is the preferred method as it supports limit/offset at the root level.
- * Use this for pagination and limiting results.
+ * Schema: Query.productsByCategory + Query.rootCategory
+ * Root-level limit/offset (unlike nested rootCategory.products).
  */
 export const PRODUCTS_BY_CATEGORY_FILTERED_QUERY = gql`
 query ProductsByCategoryFiltered($categoryId: ID!, $limit: Int, $offset: Int) {
@@ -252,12 +249,26 @@ query ProductsByCategoryFiltered($categoryId: ID!, $limit: Int, $offset: Int) {
       name
       slug
     }
+    brand_category_covers {
+      id
+      cover
+      cover_url
+      brand {
+        id
+        name
+      }
+      category {
+        id
+        name
+      }
+    }
   }
 }
 `;
 
+/** Schema: Query.productsWithFilters only (no rootCategory metadata). */
 export const PRODUCTS_WITH_FILTERS_QUERY = gql`
-  query ProductsWithFilters($limit: Int!, $offset: Int!, $filters: ProductFilterInput) {
+  query ProductsWithFilters($limit: Int, $offset: Int, $filters: ProductFiltersInput) {
     productsWithFilters(
       filters: $filters
       limit: $limit
@@ -293,13 +304,75 @@ export const PRODUCTS_WITH_FILTERS_QUERY = gql`
   }
 `;
 
+/** Schema: Query.productsWithFilters + Query.rootCategory */
+export const PRODUCTS_WITH_FILTERS_LISTING_QUERY = gql`
+  query ProductsWithFiltersListing($categoryId: ID!, $filters: ProductFiltersInput, $limit: Int, $offset: Int) {
+    productsWithFilters(filters: $filters, limit: $limit, offset: $offset) {
+      id
+      name
+      sku
+      images
+      list_price_amount
+      list_price_currency
+      price_range_exact_amount
+      created_at
+      updated_at
+      productBadges {
+        label
+        color
+      }
+      brand_name
+      brand_logo_url
+      rootCategories {
+        id
+        name
+        slug
+      }
+      productAttributeValues {
+        id
+        key
+        attribute {
+          id
+          label
+          key
+        }
+      }
+    }
+    rootCategory(id: $categoryId) {
+      id
+      name
+      slug
+      image
+      subCategories {
+        id
+        name
+        slug
+      }
+      brand_category_covers {
+        id
+        cover
+        cover_url
+        brand {
+          id
+          name
+        }
+        category {
+          id
+          name
+        }
+      }
+    }
+  }
+`;
+
+
 /**
  * ✅ جلب التصنيفات فقط (بدون منتجات)
  * 
  * IMPORTANT: This query fetches ONLY categories, not products.
  * Fetching all products without categoryId and limit causes 503 errors.
  * 
- * To fetch products, use PRODUCTS_BY_CATEGORY_QUERY with a specific categoryId and limit.
+ * To fetch products, use Query.productsWithFilters (see PRODUCTS_WITH_FILTERS_LISTING_QUERY + fetchCategoryListing).
  */
 export const GET_CATEGORIES_ONLY_QUERY = gql`
 query GetCategoriesOnly {
@@ -308,8 +381,40 @@ query GetCategoriesOnly {
     name
     slug
     image
+    subCategories {
+      id
+      name
+      slug
+    }
+    brand_category_covers {
+      id
+      cover
+      cover_url
+      brand {
+        id
+        name
+      }
+      category {
+        id
+        name
+      }
+    }
   }
 }
+`;
+
+/** publicSettings for navbar logo (group `logo`) + offers banner; client via /api/graphql */
+export const PUBLIC_SETTINGS_NAV_QUERY = gql`
+  query PublicSettingsNav {
+    publicSettings {
+      key
+      value
+      group
+      url
+      image
+      multiple_images
+    }
+  }
 `;
 
 /**
@@ -319,8 +424,8 @@ query GetCategoriesOnly {
  * 
  * Use instead:
  * - GET_CATEGORIES_ONLY_QUERY for categories only
- * - PRODUCTS_BY_CATEGORY_QUERY with categoryId and limit for products
- * 
+ * - Query.productsWithFilters for product listings
+ *
  * This query is kept for backward compatibility but should be removed.
  */
 export const GET_CATEGORIES_QUERY = gql`
@@ -545,6 +650,14 @@ query getproduct ($id: String!) {
       id
       name
       price
+      size
+      variant_sku
+      stock {
+        qty
+        minQty
+        maxQty
+        isInStock
+      }
     }
     productAttributeValues {
       id
@@ -588,12 +701,13 @@ export const GET_PRODUCT_BY_SKU = gql`
           qty
           maxQty
           minQty
-          
+          isInStock
         }
         id
         name
         price
         size
+        variant_sku
       }
       productAttributeValues {
         id
@@ -699,6 +813,7 @@ query GetOrders {
       id
       order_id
       product_id
+      variant_id
       product_name
       product_sku
       quantity
@@ -804,6 +919,82 @@ query GetOrders {
 
 
 
+/**
+ * Homepage `brand_category_products`: newest products via Query.productsAdvanced.
+ * Backend sort field names are not in this repo — if this errors, try sort_by "updated_at" or "id".
+ * Fallback idea: Query.productsWithFilters + client sort by created_at + slice(0, 15).
+ */
+export const HOME_BRAND_CATEGORY_PRODUCTS_QUERY = gql`
+  query HomeBrandCategoryProducts(
+    $filters: ProductFiltersInput!
+    $page: Int
+    $per_page: Int!
+    $sort_by: String
+    $sort_order: String
+  ) {
+    productsAdvanced(
+      filters: $filters
+      page: $page
+      per_page: $per_page
+      sort_by: $sort_by
+      sort_order: $sort_order
+    ) {
+      data {
+        id
+        name
+        sku
+        images
+        created_at
+        updated_at
+        price_range_from
+        price_range_exact_amount
+        list_price_amount
+        brand_name
+        brand {
+          name
+        }
+        productBadges {
+          label
+          color
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Homepage `brand_category_products`: products by category_id + brand_id via Query.productsWithFilters.
+ * Fetch a window (e.g. 80), sort by created_at desc on the client, then slice(0, 15).
+ */
+export const HOME_BRAND_CATEGORY_WITH_FILTERS_QUERY = gql`
+  query HomeBrandCategoryWithFilters(
+    $filters: ProductFiltersInput
+    $limit: Int!
+    $offset: Int
+  ) {
+    productsWithFilters(filters: $filters, limit: $limit, offset: $offset) {
+      id
+      name
+      sku
+      images
+      created_at
+      updated_at
+      price_range_from
+      price_range_exact_amount
+      list_price_amount
+      brand_name
+      brand {
+        id
+        name
+      }
+      productBadges {
+        label
+        color
+      }
+    }
+  }
+`;
+
 export const GET_ACTIVE_HOME_PAGE_BLOCKS = gql`
 query {
   activeHomepageBlocks {
@@ -816,7 +1007,6 @@ query {
     button_location
     title
     is_active
-    sort_order
     section
     display_limit
     background_color
@@ -843,7 +1033,8 @@ query {
        product_id
         
       }
-    
+      brand_id
+      root_category_id
       
       per_row
       show_price
@@ -877,12 +1068,61 @@ query {
     typed_content {
       data
     }
+    selected_products {
+      id
+      name
+      sku
+      images
+      price_range_from
+      price_range_exact_amount
+      list_price_amount
+      brand_name
+      productBadges {
+        label
+        color
+      }
+    }
   }
 }
 
 
 `;
 
+
+
+
+/** Schema: Query.activeCountries */
+export const ACTIVE_COUNTRIES_QUERY = gql`
+  query ActiveCountries {
+    activeCountries {
+      id
+      name
+      code
+      normal_shipping_cost
+      fast_shipping_cost
+      is_active
+    }
+  }
+`;
+
+/** Schema: Query.calculateShipping */
+export const CALCULATE_SHIPPING_QUERY = gql`
+  query CalculateShipping($country_id: ID!) {
+    calculateShipping(country_id: $country_id) {
+      country {
+        id
+        name
+        code
+      }
+      normal_shipping {
+        cost
+      }
+      fast_shipping {
+        cost
+      }
+    }
+  }
+`;
 
 export const UNREAD_NOTIFICATIONS_QUERY = gql`
   query UnreadNotifications($user_id: ID!) {
@@ -920,14 +1160,18 @@ export const Root_CATEGORIES = gql`
       slug
       image
       order
+      is_main
+      show_brands_in_menu
       parent {
         id
         name
         order
+        is_main
       }
       subCategories {
         id
         name
+        slug
         order
       }
     }
@@ -1045,7 +1289,21 @@ export const GET_BLOGS_QUERY = gql`
       image
       title
       description
-     
+      author_name
+      date
+    }
+  }
+`;
+
+export const GET_BLOG_BY_ID = gql`
+  query GetBlog($id: ID!) {
+    blog(id: $id) {
+      id
+      image
+      title
+      description
+      author_name
+      date
     }
   }
 `;

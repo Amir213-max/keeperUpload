@@ -19,11 +19,11 @@ import {
 } from "lucide-react";
 
 const VERIFY_PAYMENT = gql`
-mutation VerifyPayment($input: VerifyTapPaymentInput!) {
+mutation VerifyPayment($input: VerifyPaymentInput!) {
   verifyTapPayment(input: $input) {
       success
       message
-      payment_status
+      tap_status
     
       order {
         id
@@ -136,6 +136,14 @@ export default function PaymentVerifyClient() {
         setOrderData(result.order);
         setPaymentData(result.payment);
         setMessage(result.message || "Your payment was successful!");
+
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem("guest_cart");
+          } catch {
+            /* ignore */
+          }
+        }
 
         // ✅ Start SMSA integration asynchronously (fire and forget) - don't block payment verification
         if (result.order) {
@@ -302,7 +310,7 @@ export default function PaymentVerifyClient() {
   };
 
   const handleViewOrders = () => {
-    router.push("/myprofile?tab=orders");
+    router.push("/profile?tab=orders");
   };
 
   const formatDate = (dateString) => {

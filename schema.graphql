@@ -1,4 +1,4 @@
- type User {
+﻿ type User {
   id: ID!
   name: String!
   email: String!
@@ -67,6 +67,8 @@ type HomePageBlockContent {
     
     # Products content
     product_ids: [ProductIdInput!]
+    brand_id: ID
+    root_category_id: ID
     per_row: Int
     show_price: Boolean
     show_add_to_cart: Boolean
@@ -394,6 +396,7 @@ type Order {
     number: String! @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
     reference_id: String
     payment_status: String!
+    status: String!
     tags: [String!]! 
     tracking_urls: [String!]! 
     published: Boolean! 
@@ -405,11 +408,19 @@ type Order {
     vat_amount: Float!
     shipping_cost: Float!
     shipping_type: String!
+    discount_amount: Float!
     total_amount: Float!
+    
+    # Offer fields
+    offer_id: ID
+    offer_code: String
+    offer: Offer @belongsTo
     
     # Cart relationship
     cart_id: ID
     cart: Cart @belongsTo
+    variant_id: ID
+    variant: ProductVariant @belongsTo
     
     # Relationships
     user: User @belongsTo
@@ -422,6 +433,7 @@ type Order {
      id: ID!
      order_id: ID!
      product_id: ID!
+     variant_id: ID!
      product_name: String!
      product_sku: String!
      quantity: Int!
@@ -504,6 +516,8 @@ type Setting {
     value: String
     typed_value: String
     type: String!
+    image: String @field(resolver: "App\\GraphQL\\Resolvers\\SettingResolver@resolveImage")
+    multiple_images: [String!]! @field(resolver: "App\\GraphQL\\Resolvers\\SettingResolver@resolveMultipleImages")
     group: String!
     description: String
     url: String
@@ -660,6 +674,7 @@ type NotificationTypeCount {
  
  input TapPaymentInput {
      cart_id: ID!
+    variant_id: ID
      shipping_cost: Float
      shipping_type: String
      shipping_country_id: ID
@@ -686,6 +701,7 @@ type NotificationTypeCount {
      number: String!
      reference_id: String
      payment_status: String!
+    status: String
      tags: String
      tracking_urls: String
      published: Boolean
@@ -694,6 +710,7 @@ type NotificationTypeCount {
      payment_status_id: ID
      parent_order_id: ID
      user_id: ID
+    variant_id: ID
  }
  
   type Product {
@@ -749,6 +766,7 @@ type NotificationTypeCount {
      url: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
      brand_name: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
      brand_logo_url: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
+     brand_cover_url: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
      description: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
      
      # Language-specific translated fields
@@ -762,10 +780,13 @@ type NotificationTypeCount {
      brand_name_ar: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
      brand_logo_url_en: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
      brand_logo_url_ar: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
+     brand_cover_url_en: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
+     brand_cover_url_ar: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
      description_en: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
      description_ar: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
      
      # Relationships
+     brand_id: ID
      brand: Brand @belongsTo
      variants: [ProductVariant!]! @hasMany
      rootCategories: [RootCategory!]! @belongsToMany
@@ -817,10 +838,13 @@ type Brand {
      image: String
      logo: String
      logo_url: String @field(resolver: "App\\GraphQL\\Resolvers\\BrandResolver@resolveLogoUrl")
+     cover: String
+     cover_url: String @field(resolver: "App\\GraphQL\\Resolvers\\BrandResolver@resolveCoverUrl")
      shoe_size_region: String
      
      is_active: Boolean!
      products: [Product!]! @hasMany
+     category_covers: [BrandCategoryCover!]! @hasMany
      created_at: String!
      updated_at: String!
      
@@ -828,6 +852,18 @@ type Brand {
      name_en: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
      name_ar: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveTranslatedField")
  }
+
+type BrandCategoryCover {
+    id: ID!
+    brand_id: ID!
+    category_id: ID!
+    cover: String
+    cover_url: String
+    brand: Brand @belongsTo
+    category: RootCategory @belongsTo
+    created_at: String!
+    updated_at: String!
+}
  
  input ProductAttributeValueInput {
   value: String!
@@ -841,9 +877,16 @@ type Brand {
   description: String
      image: String
      logo: String
+     cover: String
      shoe_size_region: String
      is_active: Boolean!
  }
+
+input BrandCategoryCoverInput {
+    brand_id: ID!
+    category_id: ID!
+    cover: String
+}
  
  input ProductInput {
      sku: String!
@@ -905,13 +948,138 @@ type Brand {
  
  type ProductVariant {
   id: ID!
-  name: String! @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
-     price: Float!
+ published: Boolean!
      created_at: String!
      updated_at: String!
+ 
+ # Configuration fields (extracted from configuration JSON)
+ variant_sku: String @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveVariantSku")
+ variant_type: String @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveVariantType")
+ name: String @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveName")
+ name_without_brand: String @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveNameWithoutBrand")
+size: String @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveSize")
+color: String @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveColor")
+quantity: Int @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveQuantity")
+is_online: Boolean @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveIsOnline")
+ identifier: String @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveIdentifier")
+ url: String @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveUrl")
+ 
+# Nested configuration objects
+brand: ProductVariantBrand @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveBrand")
+list_price: ProductVariantPrice @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveListPrice")
+offer: ProductVariantOffer @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveOffer")
+stock: ProductVariantStock @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveStock")
+images: [String!] @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveImages")
+descriptions: [ProductVariantDescription!] @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveDescriptions")
+attribute_values: [ProductVariantAttributeValue!] @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveAttributeValues")
+ 
+ # Backward compatibility
+ price: Float! @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolvePrice")
      
      # Relationships
      product: Product @belongsTo
+ 
+ # Raw configuration JSON (for advanced use)
+ configuration: String @field(resolver: "App\\GraphQL\\Resolvers\\ProductVariantResolver@resolveConfiguration")
+}
+
+type ProductVariantBrand {
+ id: String
+ name: String
+ logo_url: String
+}
+
+type ProductVariantPrice {
+ amount: Float
+ currency: String
+}
+
+type ProductVariantOffer {
+ code: String
+ discount_percentage: Float
+ price: ProductVariantPrice
+}
+
+type ProductVariantStock {
+ qty: Int
+ isInStock: Boolean
+ minQty: Int
+ maxQty: Int
+}
+
+type ProductVariantDescription {
+ text: String
+ type: ProductVariantDescriptionType
+}
+
+type ProductVariantDescriptionType {
+ key: String
+ name: String
+}
+
+type ProductVariantAttributeValue {
+ key: String
+ label: String
+ attribute: ProductVariantAttribute
+}
+
+type ProductVariantAttribute {
+ key: String
+ label: String
+ }
+ 
+# Product Stock Sync Types
+type Stock {
+    inStock: Boolean!
+    maximumBuyableQuantity: Int
+    quantity: Int
+    restocks: [String!]!
+}
+
+type ProductBrand {
+    id: ID!
+    name: String!
+    slug: String
+}
+
+type ProductConfiguration {
+    sku: String!
+    size: String
+    brand: ProductBrand
+    stock: Stock!
+}
+
+type ProductStockSync {
+    sku: String!
+    name: String!
+    brand: ProductBrand
+    brand_id: ID
+    stock: Stock!
+    configurations: [ProductConfiguration!]!
+}
+ 
+ type ProductStockSyncResponse {
+     data: ProductStockSync!
+ }
+ 
+ input StockInput {
+     inStock: Boolean!
+     maximumBuyableQuantity: Int
+     quantity: Int
+     restocks: [String!]
+ }
+ 
+ input ProductConfigurationInput {
+     sku: String!
+     size: String
+     stock: StockInput!
+ }
+ 
+ input ProductStockSyncInput {
+     sku: String!
+     name: String!
+     stock: StockInput!
+     configurations: [ProductConfigurationInput!]!
  }
  
  input ProductVariantInput {
@@ -924,30 +1092,45 @@ type Brand {
      name: String! @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
      slug: String
      description: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
+     image: String
+     image_url: String @field(resolver: "App\\GraphQL\\Resolvers\\RootCategoryResolver@resolveImageUrl")
+     order: Int
      parent_id: ID
+    is_main: Boolean
+    show_brands_in_menu: Boolean
      created_at: String!
      updated_at: String!
      
      # Relationships
-     products: [Product!]! @belongsToMany
+     products: [Product!]! @field(resolver: "App\\GraphQL\\Resolvers\\RootCategoryResolver@resolveProducts")
      parent: RootCategory @belongsTo
      subCategories: [RootCategory!]! @hasMany
+     brand_category_covers: [BrandCategoryCover!]! @hasMany
  }
  
  input RootCategoryInput {
   name: String!
   slug: String
+  image: String
   description: String
   parent_id: ID
+ is_main: Boolean
+  order: Int
+ show_brands_in_menu: Boolean
  }
  
  type Offer {
   id: ID!
      name: String! @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
      description: String @field(resolver: "App\\GraphQL\\Resolvers\\TranslatableFieldsResolver@resolveGenericTranslatedField")
+     offer_code: String
+     discount_percentage: Float
+     discount_amount: Float
+     minimum_order_amount: Float
      discount: Float!
      start_date: String  
      end_date: String    
+     is_active: Boolean!
      created_at: String!
      updated_at: String!
      
@@ -973,6 +1156,7 @@ type Brand {
   id: ID!
      cart_id: ID!
      product_id: ID!
+     variant_id: ID!
      quantity: Int!
      created_at: String!
      updated_at: String!
@@ -980,6 +1164,7 @@ type Brand {
      # Relationships
      cart: Cart @belongsTo
      product: Product @belongsTo
+     variant: ProductVariant @belongsTo
  }
  
  type Category {
@@ -1247,6 +1432,7 @@ type ProductFiltersInfo {
  input AddCartItemInput {
      cart_id: ID!
      product_id: ID!
+     variant_id: ID!
      quantity: Int!
      unit_price: Float
  }
@@ -1264,11 +1450,13 @@ type ProductFiltersInfo {
      is_online: Boolean
      published: Boolean
      search: String
+     are_shoes: Boolean
  }
 
 input CreateOrderFromCartInput {
     payment_status: String!
     payment_method_id: ID
+    variant_id: ID
     shipping_type: String
     shipping_country_id: ID
     tags: [String!]
@@ -1276,6 +1464,7 @@ input CreateOrderFromCartInput {
     published: Boolean
     empty_cart: Boolean
     reference_id: String
+    offer_code: String
 }
 
  input SettingInput {
@@ -1376,7 +1565,7 @@ type Query {
      users: [User!]! @all(model: "App\\Models\\User")
      user(id: ID! @eq): User @find(model: "App\\Models\\User")
      me: User @field(resolver: "App\\GraphQL\\Queries\\MeQuery")
-     profile: User @field(resolver: "App\\GraphQL\\Queries\\ProfileByTokenQuery")
+     profile(token: String!): User @field(resolver: "App\\GraphQL\\Queries\\ProfileByTokenQuery")
  
      products(limit: Int, offset: Int): [Product!]! @field(resolver: "App\\GraphQL\\Queries\\ProductsQuery")
      productsWithCategories(limit: Int, offset: Int): [Product!]! @field(resolver: "App\\GraphQL\\Queries\\ProductsWithCategoriesQuery")
@@ -1405,6 +1594,8 @@ type Query {
 
      brands: [Brand!]! @all(model: "App\\Models\\Brand")
     brand(id: ID! @eq): Brand @find(model: "App\\Models\\Brand")
+    brandCategoryCovers: [BrandCategoryCover!]! @all(model: "App\\Models\\BrandCategoryCover")
+    brandCategoryCover(id: ID! @eq): BrandCategoryCover @find(model: "App\\Models\\BrandCategoryCover")
 
     productVariants: [ProductVariant!]! @all(model: "App\\Models\\ProductVariant")
     productVariant(id: ID! @eq): ProductVariant @find(model: "App\\Models\\ProductVariant")
@@ -1499,6 +1690,9 @@ type Query {
      createBrand(input: BrandInput! @spread): Brand @create(model: "App\\Models\\Brand")
      updateBrand(id: ID!, input: BrandInput! @spread): Brand @update(model: "App\\Models\\Brand")
      deleteBrand(id: ID!): Brand @delete(model: "App\\Models\\Brand")
+    createBrandCategoryCover(input: BrandCategoryCoverInput! @spread): BrandCategoryCover @create(model: "App\\Models\\BrandCategoryCover")
+    updateBrandCategoryCover(id: ID!, input: BrandCategoryCoverInput! @spread): BrandCategoryCover @update(model: "App\\Models\\BrandCategoryCover")
+    deleteBrandCategoryCover(id: ID!): BrandCategoryCover @delete(model: "App\\Models\\BrandCategoryCover")
  
      createProductVariant(product_id: ID!, input: ProductVariantInput! @spread): ProductVariant @create(model: "App\\Models\\ProductVariant")
      updateProductVariant(id: ID!, input: ProductVariantInput! @spread): ProductVariant @update(model: "App\\Models\\ProductVariant")
@@ -1529,6 +1723,7 @@ type Query {
     # Cart operations
     emptyCart(cart_id: ID!): Cart @field(resolver: "App\\GraphQL\\Mutations\\EmptyCartMutation")
     createOrderFromCart(cart_id: ID!, input: CreateOrderFromCartInput! @spread): Order @field(resolver: "App\\GraphQL\\Mutations\\CreateOrderFromCartMutation")
+        applyOfferCodeToOrder(order_id: ID!, offer_code: String!): Order @field(resolver: "App\\GraphQL\\Mutations\\ApplyOfferCodeToOrderMutation")
      
     # Tap Payment mutations
     createOrderWithTapPayment(input: TapPaymentInput! @spread): TapPaymentResponse! @field(resolver: "App\\GraphQL\\Mutations\\CreateOrderWithTapPaymentMutation")
@@ -1547,7 +1742,17 @@ type Query {
      createSetting(input: SettingInput! @spread): Setting @create(model: "App\\Models\\Setting")
      updateSetting(id: ID!, input: SettingInput! @spread): Setting @update(model: "App\\Models\\Setting")
      deleteSetting(id: ID!): Setting @delete(model: "App\\Models\\Setting")
-     setSettingValue(key: String!, value: String!, type: String, group: String, description: String, is_public: Boolean): Setting! @field(resolver: "App\\GraphQL\\Mutations\\SetSettingValueMutation")
+     setSettingValue(
+        key: String!,
+        value: String,
+        type: String,
+        group: String,
+        description: String,
+        url: String,
+        image: String,
+        multiple_images: [String!],
+        is_public: Boolean
+    ): Setting! @field(resolver: "App\\GraphQL\\Mutations\\SetSettingValueMutation")
      
     # Product Import/Export mutations
     exportProducts(filters: ProductFiltersInput, format: String): ProductExportResponse! @field(resolver: "App\\GraphQL\\Mutations\\ExportProductsMutation")
@@ -1581,4 +1786,7 @@ type Query {
     createBlog(input: BlogInput! @spread): Blog @field(resolver: "App\\GraphQL\\Mutations\\CreateBlogMutation")
     updateBlog(id: ID!, input: UpdateBlogInput! @spread): Blog @field(resolver: "App\\GraphQL\\Mutations\\UpdateBlogMutation")
     deleteBlog(id: ID!): Blog @delete(model: "App\\Models\\Blog")
+    
+    # Product Stock Sync mutation
+    syncProductStock(input: ProductStockSyncInput! @spread): ProductStockSyncResponse! @field(resolver: "App\\GraphQL\\Mutations\\SyncProductStockMutation")
 }

@@ -8,6 +8,7 @@ import {
   buildPathSegmentUrl,
   buildParentPageUrl,
   fromSlug,
+  toSlug,
   attributeNameToSlug,
 } from "../lib/urlSlugHelper";
 
@@ -64,6 +65,7 @@ export function useProductFilters({
   const selectedBrandRef = useRef(selectedBrand);
   const selectedAttributesRef = useRef(selectedAttributes);
   const hasParsedInitialUrlRef = useRef(false); // Track if we've parsed URL on initial load
+  const isHydratingFromUrlRef = useRef(true); // Prevent non-user URL rewrites during deep-link hydration
   const dataReadyRef = useRef(false); // Track if brands/attributes are loaded
   const brandsRef = useRef(brands); // Store brands to avoid re-parsing on data changes
   const attributeValuesRef = useRef(attributeValues); // Store attributeValues to avoid re-parsing on data changes
@@ -402,7 +404,19 @@ export function useProductFilters({
       if (!selectedBrandRef.current && shouldParse && searchParams) {
         const brandSlug = searchParams.get("brand");
         if (brandSlug) {
-          const brandName = fromSlug(brandSlug);
+          const decoded = decodeURIComponent(String(brandSlug).trim());
+          const target = toSlug(decoded).toLowerCase();
+          let resolved = null;
+          for (const b of currentBrands) {
+            const name =
+              typeof b === "string" ? b : b?.brand_name ?? b?.name ?? null;
+            if (!name) continue;
+            if (toSlug(String(name)).toLowerCase() === target) {
+              resolved = String(name);
+              break;
+            }
+          }
+          const brandName = resolved || fromSlug(decoded);
           if (brandName !== selectedBrandRef.current) {
             setSelectedBrand(brandName);
           }
@@ -484,6 +498,7 @@ export function useProductFilters({
         // خاصة إذا كان URL يحتوي على فلاتر
         setTimeout(() => {
           isInitialLoadRef.current = false;
+          isHydratingFromUrlRef.current = false;
         }, 2500); // 🔹 تأخير 2.5 ثانية لضمان عدم تحديث URL على initial load
       }
     }, isInitial ? 200 : 100); // 🔹 زيادة timeout على initial load لضمان parsing صحيح
@@ -559,6 +574,7 @@ export function useProductFilters({
   const updateUrlFromState = useCallback(() => {
     if (disableUrlUpdates) return;
     if (isUpdatingUrlRef.current) return;
+    if (isHydratingFromUrlRef.current && !userInitiatedChangeRef.current) return;
     
     // 🔹 منع تحديث URL إذا كان المستخدم لم يقم بتغيير الفلاتر (لمنع restart عند انتهاء ProgressBar)
     if (!userInitiatedChangeRef.current && !isInitialLoadRef.current) {
@@ -689,13 +705,22 @@ export function useProductFilters({
     });
   }, [setSelectedBrand, updateUrlFromState]);
 
-  const handleAttributesChange = useCallback((attributes) => {
+  const handleAttributesChange = useCallback((attributes, options = {}) => {
     if (!setSelectedAttributes) {
       console.warn('⚠️ setSelectedAttributes is not defined');
       return;
     }
+    const userInitiated = options?.userInitiated !== false;
+
+    if (!userInitiated) {
+      setSelectedAttributes(attributes);
+      selectedAttributesRef.current = attributes;
+      return;
+    }
+
     userInitiatedChangeRef.current = true; // 🔹 علامة أن المستخدم قام بالتغيير
     isInitialLoadRef.current = false; // 🔹 إلغاء التحميل الأولي عند تغيير المستخدم
+    isHydratingFromUrlRef.current = false;
     setSelectedAttributes(attributes);
     
     // 🔹 تحديث refs فوراً قبل تحديث URL
@@ -711,6 +736,7 @@ export function useProductFilters({
     selectedBrand,
     selectedAttributes,
     selectedCategorySlug,
+    setSelectedCategorySlug,
     setSelectedBrand,
     setSelectedAttributes,
     handleBrandChange: handleBrandChange || (() => {}), // 🔹 قيمة افتراضية

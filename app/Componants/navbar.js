@@ -16,6 +16,8 @@ import { graphqlClient } from '../lib/graphqlClient';
 import { useCategory } from '../contexts/CategoryContext';
 import { useCart } from '../contexts/CartContext';
 import { clearTranslationCache } from '../lib/translationService';
+import { usePublicNavSettings } from '../contexts/PublicNavSettingsContext';
+import { SITE_LOGO_FALLBACK_URL } from '../lib/siteLogoFromSettings';
 
 export default function NavbarWithLinks() {
   const { t, lang, setLang } = useTranslation();
@@ -35,7 +37,7 @@ export default function NavbarWithLinks() {
     const [blocks, setBlocks] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [offersLabel, setOffersLabel] = useState(null);
+  const { siteLogoUrl, offersLabel } = usePublicNavSettings();
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const langDropdownRef = useRef(null);
   useEffect(() => {
@@ -53,46 +55,6 @@ export default function NavbarWithLinks() {
     }
 
     fetchBlocks();
-  }, []);
-
-  // جلب offers_label من الإعدادات
-  useEffect(() => {
-    async function fetchOffersLabel() {
-      try {
-        const res = await fetch('https://keepersport.store/graphql', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: `
-              query {
-                publicSettings {
-                  key
-                  value
-                  group
-                  url
-                }
-              }
-            `
-          }),
-        });
-
-        const data = await res.json();
-        const allSettings = data?.data?.publicSettings || [];
-        
-        // البحث عن offers_label
-        const offers = allSettings.find(
-          (s) => s.group && s.group.toLowerCase() === 'offers_label'
-        );
-        
-        if (offers) {
-          setOffersLabel(offers);
-        }
-      } catch (err) {
-        console.error('Error fetching offers_label:', err);
-      }
-    }
-
-    fetchOffersLabel();
   }, []);
 
   // ✅ فتح الـ CartSidebar عند إضافة منتج
@@ -124,6 +86,10 @@ export default function NavbarWithLinks() {
   // ✅ جلب بيانات المستخدم والتوكن من الـ AuthContext
   const { user, token, logout } = useAuth();
 
+  /** جلسة مسجّلة: يكفي توكن أو مستخدم في السياق (لا نطلب الاثنين معًا) */
+  const hasSession = Boolean(token || user);
+  const userAccountHref = hasSession ? "/profile" : "/login";
+
     const { setSelectedCategoryId, goalkeeperGlovesBrands } = useCategory();
   const handleCategorySelect = (catId) => {
     setSelectedCategoryId(catId);
@@ -152,13 +118,13 @@ export default function NavbarWithLinks() {
       )}
 
       {/* ✅ Navbar */}
-      <header className="w-full bg-black shadow px-4 py-4">
+      <header className="relative z-40 w-full bg-black shadow px-4 py-4">
         <div className="navbar-container container mx-auto px-2 flex items-center justify-between">
           {/* ✅ Left side (Menu + Cart) */}
           <div className="navbar-left flex items-center gap-4 md:gap-6 lg:gap-5 xl:gap-6 order-3 sm:order-1">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="text-white hover:text-amber-400 transition-colors duration-200 cursor-pointer lg:hidden"
+              className="text-white hover:text-amber-400 transition-colors duration-200 cursor-pointer md:hidden"
               aria-label="Open menu"
               aria-expanded={sidebarOpen}
             >
@@ -184,15 +150,17 @@ export default function NavbarWithLinks() {
           <div className="navbar-center order-1 sm:order-2 flex items-center gap-4">
             <Link
               href="/"
-              className="relative w-24 sm:w-32 md:w-40 h-10 sm:h-12 md:h-14 block"
+              className="relative block w-[110px] h-[36px] sm:w-[140px] sm:h-[44px] md:w-[190px] md:h-[56px] max-w-[190px] max-h-[56px]"
             >
               <Image
-                src="https://static-assets.keepersport.net/dist/82d4dde2fe42e8e4fbfc.svg"
-                alt="LOGO"
+                key={siteLogoUrl || "fallback"}
+                src={siteLogoUrl || SITE_LOGO_FALLBACK_URL}
+                alt="Logo"
                 fill
-                sizes="(max-width: 640px) 6rem, (max-width: 768px) 8rem, (max-width: 1024px) 10rem, 10rem"
+                sizes="(max-width: 640px) 110px, (max-width: 768px) 140px, 190px"
                 className="object-contain"
                 priority
+                unoptimized={Boolean(siteLogoUrl && /^https?:\/\//i.test(siteLogoUrl))}
               />
             </Link>
           </div>
@@ -200,12 +168,12 @@ export default function NavbarWithLinks() {
           {/* ✅ Right side (Search + Notifications + Lang) */}
           <div className="navbar-right order-2 flex items-center gap-4 md:gap-6 lg:gap-5 xl:gap-6">
 
-            {/* 👤 User Profile - Always visible on large screens */}
+            {/* 👤 الملف الشخصي — يظهر من md فما فوق (مثل شريط الأقسام) */}
             <Link
-              href={token && user ? "/profile" : "/"}
-              className="hidden lg:block text-white hover:text-amber-400 transition-colors duration-200 cursor-pointer"
-              title={token && user ? t("Profile") || "الملف الشخصي" : t("Home") || "الرئيسية"}
-              aria-label={token && user ? t("Profile") || "Profile" : t("Home") || "Home"}
+              href={userAccountHref}
+              className="hidden md:block text-white hover:text-amber-400 transition-colors duration-200 cursor-pointer"
+              title={hasSession ? t("Profile") || "الملف الشخصي" : t("Login") || "تسجيل الدخول"}
+              aria-label={hasSession ? t("Profile") || "Profile" : t("Login") || "Login"}
             >
               <FaUser size={20} />
             </Link>
@@ -319,7 +287,7 @@ export default function NavbarWithLinks() {
       {/* ✅ Navigation Links */}
       <nav
         id="main-links"
-        className="hidden lg:flex justify-around bg-black shadow py-3 text-sm sm:text-[14px] lg:text-lg"
+        className="relative z-30 hidden md:flex justify-around bg-black shadow py-3 text-sm sm:text-[14px] lg:text-lg"
       >
         <ul className="flex gap-6 md:gap-12 text-white font-bold">
           <li>
@@ -356,7 +324,7 @@ export default function NavbarWithLinks() {
       </nav>
 
       {/* ✅ Sidebar (for mobile) */}
-      <div className="lg:hidden">
+      <div className="md:hidden">
         <Sidebar
           isOpen={sidebarOpen}
           setIsOpen={setSidebarOpen}

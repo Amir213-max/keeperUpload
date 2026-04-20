@@ -12,13 +12,28 @@ import PriceDisplay from "../components/PriceDisplay";
 import DynamicText from "../components/DynamicText";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { GET_CATEGORIES_ONLY_QUERY } from "../lib/queries";
+import { flattenCategoriesWithParentRefs } from "../lib/categoryResolve";
 import { buildPathSegmentUrl, buildParentPageUrl, parsePathSegments, parseBrandFromPathSegments, fromSlug } from "../lib/urlSlugHelper";
 import { useCategory } from "../contexts/CategoryContext";
 import { useProductFilters } from "../hooks/useProductFilters";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import ProgressBar from "../Componants/ProgressBar";
+import { buildPathWithPage } from "../lib/paginationUrl";
+import { LISTING_PAGE_SIZE } from "../lib/listingConfig";
+import ServerPaginationControls from "../Componants/ServerPaginationControls";
+import CategoryListingBanner from "../Componants/CategoryListingBanner";
+import BrandCategoryCovers from "../Componants/BrandCategoryCovers";
 
-export default function GoalKeeperClientPage({ products, brands, attributeValues, rootCategory }) {
+export default function GoalKeeperClientPage({
+  products,
+  brands,
+  attributeValues,
+  rootCategory,
+  categoryId = null,
+  initialHasMore = false,
+  listingPageSize = LISTING_PAGE_SIZE,
+  initialPage = 1,
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -28,18 +43,23 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
   const setSelectedCategoryId = categoryContext?.setSelectedCategoryId ?? (() => {});
   const setGoalkeeperGlovesBrands = categoryContext?.setGoalkeeperGlovesBrands ?? (() => {});
   const [selectedCategoryName, setSelectedCategoryName] = useState(null);
+  const [productCatalog, setProductCatalog] = useState(products);
   const [filteredProducts, setFilteredProducts] = useState(products);
-  const [currentPage, setCurrentPage] = useState(1);
-  const productsPerPage = 20;
+  const serverPage = initialPage;
+  const productsPerPage = listingPageSize;
   const hasInitializedFromUrlRef = useRef(false);
-  
-  // ✅ إضافة state لتتبع تحميل الصور
-  const [imagesLoading, setImagesLoading] = useState(false); // يبدأ بـ false، يصبح true فقط عند التحميل الأولي أو action من المستخدم
+  const [imagesLoading, setImagesLoading] = useState(false);
   const [imageProgress, setImageProgress] = useState(0);
-  const [showProducts, setShowProducts] = useState(false); // إخفاء المنتجات حتى يكتمل التحميل
+  const [showProducts, setShowProducts] = useState(false);
   const loadedImagesRef = useRef(new Set());
   const totalImagesRef = useRef(0);
-  const isInitialLoadRef = useRef(true); // لتتبع التحميل الأولي
+  const isInitialLoadRef = useRef(true);
+  useEffect(() => {
+    setProductCatalog(products);
+  }, [products]);
+
+
+
   
   const { loading: currencyLoading } = useCurrency();
   const { t, language } = useTranslation();
@@ -63,13 +83,11 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
     fetchCategories();
   }, []);
 
-  const categoriesWithProducts = useMemo(() => {
-    return categories.filter((cat) =>
-      products.some((product) =>
-        (product.rootCategories || []).some((pCat) => pCat.id === cat.id)
-      )
-    );
-  }, [categories, products]);
+  /** Roots + subCategories for sidebar/navigation — scope comes from server fetch, not “only IDs on this page”. */
+  const categoriesForSidebar = useMemo(
+    () => flattenCategoriesWithParentRefs(categories),
+    [categories]
+  );
 
   // 🔹 حفظ البراندات في الـ context للاستخدام في الـ sidebar
   useEffect(() => {
@@ -90,7 +108,7 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
   } = useProductFilters({
     brands,
     attributeValues,
-    categoriesWithProducts,
+    categoriesWithProducts: categoriesForSidebar,
     basePath: "/GoalkeeperGloves",
     setSelectedCategoryId,
     selectedCategoryId,
@@ -202,11 +220,11 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
     setImageProgress(0);
     setShowProducts(false); // إخفاء المنتجات عند الفلترة
     loadedImagesRef.current.clear();
-  }, [selectedBrand, selectedAttributes, selectedCategoryId, currentPage]);
+  }, [selectedBrand, selectedAttributes, selectedCategoryId, serverPage]);
 
   // 🔹 فلترة المنتجات حسب الفلاتر
   useEffect(() => {
-    const result = products.filter((product) => {
+    const result = productCatalog.filter((product) => {
       // 🔹 Handle single brand (selectedBrand) or multiple brands (Brand attribute)
       let brandMatch = true;
       if (selectedAttributes["Brand"] && selectedAttributes["Brand"].length > 0) {
@@ -215,7 +233,9 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
         brandMatch = product.brand_name && selectedBrands.includes(String(product.brand_name).toLowerCase().trim());
       } else if (selectedBrand) {
         // Single brand selected
-        brandMatch = product.brand_name === selectedBrand;
+        const a = String(product.brand_name ?? "").trim().toLowerCase();
+        const b = String(selectedBrand).trim().toLowerCase();
+        brandMatch = a !== "" && a === b;
       }
 
       const attrs = product.productAttributeValues || [];
@@ -234,30 +254,34 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
         }
       );
 
-      const categoryMatch =
-        !selectedCategoryId ||
-        (product.rootCategories || []).some(
-          (cat) => String(cat.id) === String(selectedCategoryId)
-        );
-
-      return brandMatch && attributesMatch && categoryMatch;
+      return brandMatch && attributesMatch;
     });
 
     setFilteredProducts(result);
-    setCurrentPage(1);
-  }, [products, selectedBrand, selectedAttributes, selectedCategoryId]);
+  }, [productCatalog, selectedBrand, selectedAttributes]);
+
+  const skipFilterPageResetRef = useRef(true);
+  useEffect(() => {
+    if (skipFilterPageResetRef.current) {
+      skipFilterPageResetRef.current = false;
+      return;
+    }
+    if (serverPage > 1) {
+      router.replace(buildPathWithPage(pathname, searchParams, 1));
+    }
+  }, [selectedBrand, selectedAttributes, selectedCategoryId, serverPage, pathname, searchParams, router]);
 
   // 🔹 ضبط اسم التصنيف المحدد
   useEffect(() => {
-    const cat = categoriesWithProducts.find((c) => c.id === selectedCategoryId);
+    const cat = categoriesForSidebar.find((c) => String(c.id) === String(selectedCategoryId));
     setSelectedCategoryName(cat?.name || null);
-  }, [selectedCategoryId, categoriesWithProducts]);
+  }, [selectedCategoryId, categoriesForSidebar]);
 
-  // Client-side pagination
-  const indexOfLastProduct = currentPage * productsPerPage;
-  const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
-  const currentProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct);
-  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+  // Server returns one page (listingPageSize products); optional client slice if subset exceeds page (edge case)
+  const currentProducts =
+    filteredProducts.length > productsPerPage
+      ? filteredProducts.slice(0, productsPerPage)
+      : filteredProducts;
 
   // 🔹 استخدام useMemo لمنع إنشاء كائن جديد في كل render (يسبب infinite loop)
   const memoizedInitialFilters = useMemo(() => ({ ...selectedAttributes }), [selectedAttributes]);
@@ -291,6 +315,19 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
       setImageProgress(0);
       setShowProducts(true);
       isInitialLoadRef.current = false;
+    } else if (!isInitialLoadRef.current) {
+      if (totalImages === 0) {
+        setImagesLoading(false);
+        setImageProgress(0);
+        setShowProducts(true);
+        return;
+      }
+      const fallbackTimeout = setTimeout(() => {
+        setImagesLoading(false);
+        setImageProgress(0);
+        setShowProducts(true);
+      }, 3000);
+      return () => clearTimeout(fallbackTimeout);
     }
   }, [currentProducts]);
 
@@ -331,6 +368,8 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
     return `https://keepersport.store/storage/${image}`;
   };
 
+  const categoryBannerSrc = rootCategory?.image ? getImageUrl(rootCategory.image) : null;
+
   return (
     <div className={`bg-[#373e3e] ${isRTL ? "rtl" : "ltr"}`}>
       {/* ✅ Progress Bar في أعلى الشاشة */}
@@ -342,7 +381,7 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
         {/* Sidebar */}
         <div className="hidden lg:block lg:col-span-1 bg-black h-auto">
           <Sidebar
-            categories={categoriesWithProducts}
+            categories={categoriesForSidebar}
             onSelectBrand={(brandName) => {
               // 🔹 عند اختيار براند من الـ sidebar، نضيفه لـ selectedBrand و selectedAttributes["Brand"]
               if (brandName) {
@@ -440,24 +479,32 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
         </div>
 
         {/* Products Section */}
-        <div className="md:col-span-4 p-4 bg-white">
+        <div className="md:col-span-4 min-w-0 p-4 bg-white">
           {/* 🟢 عرض صورة rootCategory فوق المنتجات */}
 
           <h1 className="text-4xl text-[#1f2323] p-2">
             {selectedCategoryName ? <DynamicText>{selectedCategoryName}</DynamicText> : t("Goalkeeper Gloves")}
           </h1>
           
-          {rootCategory?.image && (
-            <div className="w-full mb-4">
-              <img 
-                src={getImageUrl(rootCategory.image)}
-                alt={rootCategory?.name || "Category Banner"}
-                className="w-full h-auto object-cover"
-              />
-            </div>
+          {categoryBannerSrc && (
+            <CategoryListingBanner
+              src={categoryBannerSrc}
+              alt={rootCategory?.name || "Category Banner"}
+            />
           )}
 
-       
+          {selectedBrand &&
+            !categoryBannerSrc &&
+            rootCategory?.brand_category_covers &&
+            rootCategory.brand_category_covers.length > 0 && (
+              <BrandCategoryCovers
+                covers={rootCategory.brand_category_covers}
+                getImageUrl={getImageUrl}
+                selectedBrand={selectedBrand}
+                selectedCategoryId={selectedCategoryId}
+                rootCategoryId={rootCategory?.id}
+              />
+            )}
 
 {!selectedCategoryId && !selectedBrand && brands && brands.length > 0 && (
             <BrandsSlider
@@ -551,57 +598,7 @@ export default function GoalKeeperClientPage({ products, brands, attributeValues
             })}
           </div>
 
-          {totalPages > 1 && (
-            <div className="flex justify-center items-center gap-4 mt-6 select-none">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                disabled={currentPage === 1}
-                className="px-3 py-2 bg-gray-200 text-gray-700 disabled:opacity-50 hover:bg-gray-300 transition"
-              >
-                &#10094;
-              </button>
-
-              <div className="flex gap-2 overflow-x-auto scrollbar-none px-2">
-                {[...Array(totalPages)].map((_, idx) => {
-                  const pageNumber = idx + 1;
-                  if (
-                    pageNumber === 1 ||
-                    pageNumber === totalPages ||
-                    (pageNumber >= currentPage - 1 && pageNumber <= currentPage + 1)
-                  ) {
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => setCurrentPage(pageNumber)}
-                        className={`px-3 py-2 text-sm sm:text-base transition ${
-                          currentPage === pageNumber
-                            ? "bg-[#1f2323] text-white shadow-md"
-                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                        }`}
-                      >
-                        {pageNumber}
-                      </button>
-                    );
-                  } else if (
-                    pageNumber === currentPage - 2 ||
-                    pageNumber === currentPage + 2
-                  ) {
-                    return <span key={idx} className="px-2 text-gray-500">...</span>;
-                  } else {
-                    return null;
-                  }
-                })}
-              </div>
-
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="px-3 py-2 bg-gray-200 text-gray-700 disabled:opacity-50 hover:bg-gray-300 transition"
-              >
-                &#10095;
-              </button>
-            </div>
-          )}
+          <ServerPaginationControls serverPage={serverPage} hasMore={initialHasMore} />
         </div>
       </div>
     </div>

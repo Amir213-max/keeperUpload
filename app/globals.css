@@ -134,11 +134,7 @@ body {
 }
 
 
-@media (max-width: 730px) {
-  nav#main-links {
-    display: none !important;
-  }
-
+@media (max-width: 767px) {
   .navbar-container {
     flex-direction: row-reverse !important;
   }

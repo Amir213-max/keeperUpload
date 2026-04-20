@@ -18,24 +18,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 🔹 إضافة عنصر للكارت للمستخدم
-  async function addItemToUserCart(cartId, product) {
-    const input = {
-      cart_id: cartId,
-      product_id: product.product_id,
-      quantity: product.quantity,
-      unit_price: product.unit_price || 0,
-    };
-    try {
-      await graphqlClient.request(ADD_ITEM_TO_CART, { input });
-    } catch (err) {
-      console.error("Error adding item to user cart:", err);
-    }
-  }
-
   // 🔹 جلب أو إنشاء كارت للمستخدم
   async function fetchOrCreateUserCart(userId) {
-    const { userCart } = await graphqlClient.request(GET_USER_CART, { userId: userId });
+    const { userCart } = await graphqlClient.request(GET_USER_CART, { user_id: userId });
     if (userCart?.id) return userCart.id;
 
     const newCart = await graphqlClient.request(CREATE_CART, {
@@ -81,12 +66,25 @@ if (guestCart.lineItems.length > 0) {
 
   for (const item of guestCart.lineItems) {
     try {
+      const variantId = item.variantId ?? item.variant_id;
+      if (variantId == null || variantId === "") {
+        console.warn("⚠️ Skip guest merge (login): missing variant_id", item.productId);
+        continue;
+      }
+      const unit = Number(
+        item.unitPrice ??
+          item.price ??
+          item.product?.list_price_amount ??
+          item.product?.price_range_exact_amount ??
+          0
+      );
       await graphqlClient.request(ADD_ITEM_TO_CART, {
         input: {
           cart_id: userCartId,
           product_id: item.product?.id || item.productId,
+          variant_id: String(variantId),
           quantity: item.quantity,
-          unit_price: item.product?.price_range_exact_amount || 0,
+          ...(Number.isFinite(unit) && unit > 0 ? { unit_price: unit } : {}),
         },
       });
     } catch (err) {

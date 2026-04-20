@@ -20,6 +20,7 @@ import PriceDisplay from "@/app/components/PriceDisplay";
 import DynamicText from "@/app/components/DynamicText";
 import Loader from "../../Componants/Loader";
 import { PRODUCTS_BY_BRAND_QUERY } from "../../lib/queries";
+import { buildListingAttributeFacetsFromProducts } from "../../lib/buildListingAttributeFacets";
 
 export default function BrandPage() {
   const params = useParams();
@@ -169,23 +170,10 @@ const [currencyRate, setCurrencyRate] = useState(null);
     }
   }
 
-  // 🎛️ Prepare dynamic filter attributes
+  // 🎛️ Prepare dynamic filter attributes (+ counts) from loaded products; omit Brand (single-brand context).
   const attributeValues = useMemo(() => {
-    const map = {};
-    products.forEach((p) => {
-      (p.productAttributeValues || []).forEach((attr) => {
-        const label = attr.attribute?.label;
-        const val = attr.key;
-        if (label && val) {
-          if (!map[label]) map[label] = new Set();
-          map[label].add(val);
-        }
-      });
-    });
-    return Object.entries(map).map(([attribute, values]) => ({
-      attribute,
-      values: Array.from(values),
-    }));
+    const { attributeValues: all } = buildListingAttributeFacetsFromProducts(products);
+    return all.filter((a) => a.attribute !== "Brand");
   }, [products]);
 
   // 🧮 Filter products by attributes

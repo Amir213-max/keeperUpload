@@ -1,28 +1,145 @@
 "use client";
 
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
-import { Swiper, SwiperSlide } from 'swiper/react';
-import { Navigation } from 'swiper/modules';
-import 'swiper/css';
-import 'swiper/css/navigation';
-import Image from 'next/image';
-import { useTranslation } from '../contexts/TranslationContext';
+import { Swiper, SwiperSlide } from "swiper/react";
+import { Navigation } from "swiper/modules";
+import "swiper/css";
+import "swiper/css/navigation";
+import Image from "next/image";
+import { useTranslation } from "../contexts/TranslationContext";
+
+const IMG_AREA = "min-h-[220px] h-[220px]";
+
+const LISTING_IMAGE_STORAGE_BASE = "https://keepersport.store/storage/";
+
+/**
+ * Normalize listing image entries for Next/Image: strings, relative paths, or `{ url }`.
+ */
+function normalizeListingImageSrc(entry) {
+  if (entry == null) return "";
+  if (typeof entry === "string") {
+    const s = entry.trim();
+    if (!s) return "";
+    if (
+      s.startsWith("http://") ||
+      s.startsWith("https://") ||
+      s.startsWith("data:") ||
+      s.startsWith("/")
+    ) {
+      return s;
+    }
+    return `${LISTING_IMAGE_STORAGE_BASE}${s.replace(/^\//, "")}`;
+  }
+  if (typeof entry === "object") {
+    const nested =
+      entry.url ?? entry.src ?? entry.path ?? entry.image ?? entry.href ?? "";
+    return normalizeListingImageSrc(typeof nested === "string" ? nested : "");
+  }
+  return "";
+}
+
+function normalizeProductImagesForSlider(images) {
+  if (!Array.isArray(images)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const entry of images) {
+    const url = normalizeListingImageSrc(entry);
+    if (url && !seen.has(url)) {
+      seen.add(url);
+      out.push(url);
+    }
+  }
+  return out;
+}
+
+/** Tiny inline SVG — subtle “sport” cue while images stream from API */
+function LoadingGlyph({ className }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 64 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <circle cx="32" cy="32" r="22" stroke="currentColor" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.35" />
+      <path
+        d="M32 18v28M18 32h28"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        opacity="0.2"
+      />
+    </svg>
+  );
+}
+
+function ImageSkeleton({ visible }) {
+  if (!visible) return null;
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center overflow-hidden rounded-md bg-transparent"
+      aria-hidden
+    >
+      <div
+        className="product-slider-shimmer absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(105deg, transparent 42%, rgba(31,35,35,.07) 50%, transparent 58%)",
+          animation: "productSliderShimmer 1.35s ease-in-out infinite",
+        }}
+      />
+      <LoadingGlyph className="relative z-[1] h-14 w-14 text-[#1f2323]/20" />
+    </div>
+  );
+}
 
 export default function ProductSlider({ images, productName, onImageLoad }) {
-  const { lang } = useTranslation();
-  const [direction, setDirection] = useState('ltr');
+  const { lang, t } = useTranslation();
+  const [direction, setDirection] = useState("ltr");
   const swiperRef = useRef(null);
   const previousImagesRef = useRef(null);
+  const firstSlideReportedRef = useRef(false);
 
-  // 🔹 Memoize direction to prevent unnecessary re-renders
+  /** index -> loaded (or error: treat as done to hide skeleton) */
+  const [slideState, setSlideState] = useState({});
+
+  const markSlideDone = useCallback(
+    (index, { error } = {}) => {
+      setSlideState((prev) => ({ ...prev, [index]: error ? "error" : "loaded" }));
+      if (index === 0 && onImageLoad && !firstSlideReportedRef.current) {
+        firstSlideReportedRef.current = true;
+        onImageLoad();
+      }
+    },
+    [onImageLoad]
+  );
+
   useEffect(() => {
-    setDirection(lang === 'ar' ? 'rtl' : 'ltr');
+    setDirection(lang === "ar" ? "rtl" : "ltr");
   }, [lang]);
 
-  // 🔹 Memoize showArrows to prevent recalculation
-  const showArrows = useMemo(() => images?.length > 1, [images?.length]);
+  const imageUrls = useMemo(
+    () => normalizeProductImagesForSlider(images),
+    [images]
+  );
 
-  // 🔹 Memoize handlers to prevent re-creation
+  const showArrows = useMemo(() => imageUrls.length > 1, [imageUrls.length]);
+  const hasImages = imageUrls.length > 0;
+
+  useEffect(() => {
+    const currentImagesKey = imageUrls.join("\u0001");
+    const previousImagesKey = previousImagesRef.current || "";
+
+    if (currentImagesKey === previousImagesKey && previousImagesKey !== "") {
+      return;
+    }
+
+    previousImagesRef.current = currentImagesKey;
+    setSlideState({});
+    firstSlideReportedRef.current = false;
+  }, [imageUrls]);
+
   const handlePrev = useCallback((e) => {
     e.preventDefault();
     if (swiperRef.current) swiperRef.current.slidePrev();
@@ -33,34 +150,23 @@ export default function ProductSlider({ images, productName, onImageLoad }) {
     if (swiperRef.current) swiperRef.current.slideNext();
   }, []);
 
-  // 🔹 Memoize empty check
-  const hasImages = useMemo(() => Array.isArray(images) && images.length > 0, [images]);
-
-  // 🔹 إعادة تعيين عند تغيير الصور
-  useEffect(() => {
-    const currentImagesKey = images?.map(img => img).join(',') || '';
-    const previousImagesKey = previousImagesRef.current || '';
-    
-    if (currentImagesKey === previousImagesKey && previousImagesKey !== '') {
-      return;
-    }
-
-    previousImagesRef.current = currentImagesKey;
-  }, [images]);
-
   if (!hasImages) {
     return (
-      <div className="w-full h-48 flex items-center justify-center bg-gray-100">
-        <span className="text-gray-400">No images</span>
+      <div
+        className={`flex w-full ${IMG_AREA} items-center justify-center rounded-md border border-dashed border-neutral-200/60 bg-transparent`}
+      >
+        <div className="flex flex-col items-center gap-2 text-neutral-400">
+          <LoadingGlyph className="h-10 w-10" />
+          <span className="text-xs font-medium">{t("No product images")}</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div 
-      className="relative w-full flex items-center justify-center product-swiper-container"
+    <div
+      className={`product-swiper-container relative flex w-full items-center justify-center ${IMG_AREA}`}
       onClick={(e) => {
-        // يمنع الضغط داخل السلايدر من تفعيل الـ Link، إلا الصورة
         const isImage = e.target.closest(".product-image-click");
         if (!isImage) {
           e.preventDefault();
@@ -68,75 +174,118 @@ export default function ProductSlider({ images, productName, onImageLoad }) {
         }
       }}
     >
+      <style jsx global>{`
+        @keyframes productSliderShimmer {
+          0% {
+            transform: translateX(-120%) skewX(-12deg);
+          }
+          100% {
+            transform: translateX(120%) skewX(-12deg);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .product-slider-shimmer {
+            animation: none !important;
+          }
+        }
+      `}</style>
+
       <Swiper
-        onSwiper={(swiper) => (swiperRef.current = swiper)}
+        onSwiper={(swiper) => {
+          swiperRef.current = swiper;
+        }}
         key={direction}
         modules={[Navigation]}
         spaceBetween={0}
         slidesPerView={1}
-        loop={images.length > 1}
+        loop={imageUrls.length > 1}
         dir={direction}
-        className="w-full h-full product-swiper"
-        allowTouchMove={true}
-        grabCursor={true}
+        className="product-swiper h-full w-full"
+        allowTouchMove
+        grabCursor
       >
-        {images.map((img, index) => (
-          <SwiperSlide
-            key={index}
-            className="flex items-center justify-center"
-          >
-            <Image
-              src={img}
-              alt={`${productName} image ${index + 1}`}
-              width={400}
-              height={220}
-              className="w-full h-48 object-contain product-image-click cursor-pointer"
-              draggable={false}
-              loading={index === 0 ? "eager" : "lazy"}
-              priority={index === 0}
-              fetchPriority={index === 0 ? "high" : "auto"}
-              quality={index === 0 ? 80 : 75}
-              sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              placeholder="empty"
-              unoptimized={img?.startsWith('http')}
-              onLoad={() => {
-                // ✅ إشعار الـ parent component عند تحميل الصورة
-                if (index === 0 && onImageLoad) {
-                  onImageLoad();
-                }
-              }}
-              onLoadingComplete={() => {
-                // ✅ إشعار الـ parent component عند اكتمال التحميل
-                if (index === 0 && onImageLoad) {
-                  onImageLoad();
-                }
-              }}
-            />
-          </SwiperSlide>
-        ))}
+        {imageUrls.map((img, index) => {
+          const done = slideState[index] === "loaded" || slideState[index] === "error";
+          const showSkeleton = !done;
+
+          return (
+            <SwiperSlide
+              key={`${index}-${img.slice(0, 120)}`}
+              className="flex items-center justify-center"
+            >
+              <div className="relative flex h-full w-full max-w-full items-center justify-center overflow-hidden rounded-md bg-transparent">
+                <ImageSkeleton visible={showSkeleton} />
+
+                {slideState[index] === "error" ? (
+                  <div className="product-image-click flex h-full w-full cursor-pointer flex-col items-center justify-center gap-2 px-4 text-center text-neutral-400">
+                    <LoadingGlyph className="h-12 w-12 opacity-40" />
+                    <span className="text-xs">{t("Image unavailable")}</span>
+                  </div>
+                ) : (
+                  <Image
+                    src={img}
+                    alt={`${productName} image ${index + 1}`}
+                    width={400}
+                    height={220}
+                    className={`product-image-click h-full max-h-[220px] w-full cursor-pointer object-contain transition-all duration-500 ease-out ${
+                      done ? "scale-100 opacity-100" : "scale-[0.98] opacity-0"
+                    }`}
+                    draggable={false}
+                    loading={index === 0 ? "eager" : "lazy"}
+                    priority={index === 0}
+                    fetchPriority={index === 0 ? "high" : "auto"}
+                    quality={index === 0 ? 82 : 72}
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                    placeholder="empty"
+                    unoptimized={
+                      img.startsWith("http://") ||
+                      img.startsWith("https://") ||
+                      img.startsWith("data:")
+                    }
+                    onLoadingComplete={() => markSlideDone(index)}
+                    onLoad={() => markSlideDone(index)}
+                    onError={() => markSlideDone(index, { error: true })}
+                  />
+                )}
+              </div>
+            </SwiperSlide>
+          );
+        })}
       </Swiper>
 
       {showArrows && (
         <>
           <button
             type="button"
-            className={`swiper-button-prev-custom ${direction === 'rtl' ? 'rtl-prev' : 'ltr-prev'}`}
+            className={`swiper-button-prev-custom ${direction === "rtl" ? "rtl-prev" : "ltr-prev"}`}
             onClick={handlePrev}
             aria-label="Previous image"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M15 18L9 12L15 6" stroke="#888" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path
+                d="M15 18L9 12L15 6"
+                stroke="#888"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
 
           <button
             type="button"
-            className={`swiper-button-next-custom ${direction === 'rtl' ? 'rtl-next' : 'ltr-next'}`}
+            className={`swiper-button-next-custom ${direction === "rtl" ? "rtl-next" : "ltr-next"}`}
             onClick={handleNext}
             aria-label="Next image"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M9 6L15 12L9 18" stroke="#888" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path
+                d="M9 6L15 12L9 18"
+                stroke="#888"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </button>
         </>

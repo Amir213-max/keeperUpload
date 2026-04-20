@@ -1,4 +1,4 @@
-// lib/mutations.js
+// Mutation map (schema.graphql): see each export name vs server Mutation fields\n// lib/mutations.js
 import { gql } from "graphql-request";
 import { graphqlClient } from "./graphqlClient";
 import { v4 as uuidv4 } from "uuid"; 
@@ -49,6 +49,7 @@ export const GET_USER_CART = gql`
       id
       items {
         id
+        variant_id
         quantity
         product {
           images
@@ -111,6 +112,7 @@ export const CREATE_CART = gql`
   mutation AddItemToCart($input: AddCartItemInput!) {
     addItemToCart(input: $input) {
       id
+      variant_id
       quantity
       product {
         id
@@ -202,6 +204,9 @@ export const APPLY_OFFER_CODE_TO_ORDER = gql`
     applyOfferCodeToOrder(order_id: $order_id, offer_code: $offer_code) {
       discount_amount
       offer_code
+      offer {
+        minimum_order_amount
+      }
     }
   }
 `;
@@ -355,16 +360,93 @@ function normalizeCart(cart) {
     id: cart.id,
     lineItems: cart.items.map((item) => ({
       id: item.id,
-      
+      variantId: item.variant_id,
+      variant_id: item.variant_id,
       quantity: item.quantity,
       product: item.product,
+      variant: null,
+      variantSku: null,
     })),
   };
 }
 
-export async function addToCartTempUser(productId, quantity = 1, unitPrice = 0) {
+/** Minimal product fetch: API CartItem has no `variant` relation; match variant_id client-side. */
+const CART_PRODUCT_FOR_STOCK = gql`
+  query CartProductForStock($id: String!) {
+    product(id: $id) {
+      id
+      variants {
+        id
+        variant_sku
+        size
+        stock {
+          qty
+          minQty
+          maxQty
+          isInStock
+        }
+      }
+    }
+  }
+`;
+
+async function enrichCartLineItemsWithVariantStock(cart) {
+  if (!cart?.lineItems?.length) return cart;
+  const productIds = [
+    ...new Set(
+      cart.lineItems
+        .map((li) => li.product?.id)
+        .filter((id) => id != null && String(id).trim() !== "")
+    ),
+  ];
+  if (productIds.length === 0) return cart;
+
+  const productById = {};
+  await Promise.all(
+    productIds.map(async (pid) => {
+      try {
+        const data = await graphqlClient.request(CART_PRODUCT_FOR_STOCK, {
+          id: String(pid),
+        });
+        if (data?.product?.id) {
+          productById[String(data.product.id)] = data.product;
+        }
+      } catch (e) {
+        console.warn("[enrichCart] product fetch failed", pid, e?.message || e);
+      }
+    })
+  );
+
+  const lineItems = cart.lineItems.map((item) => {
+    const pid = item.product?.id != null ? String(item.product.id) : null;
+    const product = pid ? productById[pid] : null;
+    const variants = product?.variants;
+    const vid = item.variantId ?? item.variant_id;
+    if (!variants?.length || vid == null || vid === "") {
+      return item;
+    }
+    const matched = variants.find((v) => String(v.id) === String(vid));
+    if (!matched) return item;
+    return {
+      ...item,
+      variant: matched,
+      variantSku: matched.variant_sku ?? item.variantSku ?? null,
+    };
+  });
+
+  return { ...cart, lineItems };
+}
+
+/**
+ * Add line to user cart via GraphQL (requires variant_id per AddCartItemInput).
+ */
+export async function addToCartTempUser(productId, quantity = 1, unitPrice = 0, variantId = null) {
   try {
     // ✅ log endpoint
+
+    if (variantId == null || variantId === "") {
+      throw new Error("variant_id is required to add this item to the cart");
+    }
 
     const userId = getDynamicUserId(); 
     // 1️⃣ جلب الكارت الحالي لليوزر المؤقت
@@ -399,6 +481,7 @@ export async function addToCartTempUser(productId, quantity = 1, unitPrice = 0) 
     const addItemInput = {
       cart_id: cartId,
       product_id: productId,
+      variant_id: String(variantId),
       quantity,
       unit_price: unitPrice ,
      
@@ -442,10 +525,42 @@ export async function fetchUserCart() {
       },
     });
     console.log("✅ [New Cart Created in fetchUserCart]:", newCart);
-    return normalizeCart(newCart.createCart);
+    const emptyCart = normalizeCart(newCart.createCart);
+    return enrichCartLineItemsWithVariantStock(emptyCart);
   }
 
   console.log("📦 [Cart Found]:", userCart);
-  return normalizeCart(userCart);
+  const normalized = normalizeCart(userCart);
+  return enrichCartLineItemsWithVariantStock(normalized);
 }
+
+/** Client-side (via /api/graphql): update authenticated user's profile */
+export const UPDATE_PROFILE_MUTATION = gql`
+  mutation UpdateProfile($input: UpdateProfileInput!) {
+    updateProfile(input: $input) {
+      message
+      user {
+        id
+        name
+        email
+        phone
+        date_of_birth
+        gender
+        avatar
+        created_at
+        updated_at
+      }
+    }
+  }
+`;
+
+/** Client-side (via /api/graphql): change password for authenticated user */
+export const CHANGE_PASSWORD_MUTATION = gql`
+  mutation ChangePassword($input: ChangePasswordInput!) {
+    changePassword(input: $input) {
+      success
+      message
+    }
+  }
+`;
 

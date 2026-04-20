@@ -37,13 +37,24 @@ export function CartProvider({ children }) {
           for (const item of guestCart) {
             try {
               // Use API route proxy to avoid CORS issues
-              await graphqlRequest(ADD_ITEM_TO_CART, {
-                input: {
-                  cart_id: userCart.id,
-                  product_id: item.productId || item.product?.id,
-                  quantity: item.quantity,
-                },
-              });
+              const unit = Number(
+                item.unitPrice ?? item.price ?? item.product?.list_price_amount
+              );
+              const variantId = item.variantId ?? item.variant_id;
+              if (variantId == null || variantId === "") {
+                console.warn("⚠️ Skip guest merge: missing variant_id for product", item.productId);
+                continue;
+              }
+              const input = {
+                cart_id: userCart.id,
+                product_id: item.productId || item.product?.id,
+                variant_id: String(variantId),
+                quantity: item.quantity,
+              };
+              if (Number.isFinite(unit) && unit > 0) {
+                input.unit_price = unit;
+              }
+              await graphqlRequest(ADD_ITEM_TO_CART, { input });
             } catch (err) {
               console.warn("⚠️ Failed to merge guest item:", item.productId, err);
             }
