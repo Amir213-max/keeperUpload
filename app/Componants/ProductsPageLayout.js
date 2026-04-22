@@ -176,6 +176,7 @@ export default function ProductsPageLayout({
       const cat = categoriesForSidebar.find((c) => String(c.id) === String(catId));
       setSelectedCategoryName(cat?.name || null);
     }
+    setSidebarOpen(false);
   };
 
   return (
@@ -333,6 +334,7 @@ export default function ProductsPageLayout({
         <div className="fixed inset-0 z-40 bg-black/60 flex">
           <div className="bg-[#1f2323] w-3/4 sm:w-2/4 p-4 overflow-y-auto">
             <Sidebar
+              isOpen={sidebarOpen}
               categories={categoriesForSidebar}
               onSelectCategory={handleCategorySelect}
               setIsOpen={setSidebarOpen}

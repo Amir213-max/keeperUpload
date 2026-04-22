@@ -361,6 +361,13 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    setShowParentDetail(false);
+    setSelectedParentForDetail(null);
+    if (setIsOpen) setIsOpen(false);
+  }, [pathname]);
+
   // 🔹 فتح الـ subcategories تلقائياً عند تحميل الصفحة بناءً على الـ URL
   useEffect(() => {
     if (!pathname) return;
@@ -427,6 +434,14 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
   }, [showParentDetail, selectedParentForDetail, categories, router]);
 
   const getParentRoute = (name) => getParentRouteFromCategoryName(name);
+
+  const closeAllMobilePanels = useCallback(() => {
+    setShowParentDetail(false);
+    setSelectedParentForDetail(null);
+    if (typeof setIsOpen === "function") {
+      setIsOpen(false);
+    }
+  }, [setIsOpen]);
 
   // 🔹 التنقل لصفحة الـ parent (زر "عرض الكل" / جذر بلا فرعيات)
   const handleShowAllClick = (parentId, parentName) => {
@@ -536,24 +551,24 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
   // 🔹 Handler للضغط على براند
   const handleBrandClick = useCallback((brandName) => {
     if (!brandName) return;
-    
+
+    closeAllMobilePanels();
+
     // 🔹 إذا كان هناك externalOnSelectBrand (من GoalkeeperGloves)، استخدمه
     if (externalOnSelectBrand) {
       externalOnSelectBrand(brandName);
-      // إغلاق الـ sidebar بعد التنقل (في وضع الجوال)
-      if (setIsOpen) setIsOpen(false);
+      queueMicrotask(() => closeAllMobilePanels());
       return;
     }
-    
+
     // بناء URL مع فلتر البراند (للصفحات الأخرى)
-    const brandUrl = buildParentPageUrl('/GoalkeeperGloves', {}, brandName);
-    
+    const brandUrl = buildParentPageUrl("/GoalkeeperGloves", {}, brandName);
+
     if (brandUrl) {
       router.push(brandUrl, { scroll: false });
-      // إغلاق الـ sidebar بعد التنقل (في وضع الجوال)
-      if (setIsOpen) setIsOpen(false);
     }
-  }, [router, setIsOpen, externalOnSelectBrand]);
+    queueMicrotask(() => closeAllMobilePanels());
+  }, [router, closeAllMobilePanels, externalOnSelectBrand]);
 
   // 🔹 Handler لفتح Goalkeeper Gloves في ParentDetailView (في وضع الجوال)
   const handleShowGoalkeeperGlovesDetail = useCallback(() => {
@@ -594,11 +609,10 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
     }
   }, [navSource, mainNavRoots, parentCategories]);
 
-  // دالة التنقل للـ Products مع التأكد من setIsOpen
+  // دالة التنقل للـ Products مع التأكد من إغلاق الستارتين في الجوال
   const handleSubcategoryClick = (subId) => {
-    // 🔹 إغلاق شاشة التفاصيل عند التنقل
-    setShowParentDetail(false);
-    setSelectedParentForDetail(null);
+    // 🔹 إغلاق الستارة الثانية + الأولى فورًا قبل أي عمل آخر
+    closeAllMobilePanels();
     
     // 🔹 البحث عن slug من categories وتحويل لصفحة slug
     // يجب التنقل دائمًا إلى صفحة المنتجات، حتى لو كان هناك externalOnSelectCategory
@@ -613,6 +627,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
       if (externalOnSelectCategory) {
         externalOnSelectCategory(subId);
       }
+      queueMicrotask(() => closeAllMobilePanels());
     } else {
       // If no slug found, show error and don't navigate
       console.warn("⚠️ Category not found or missing slug for ID:", subId);
@@ -622,10 +637,9 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
       if (externalOnSelectCategory) {
         externalOnSelectCategory(subId);
       }
+      queueMicrotask(() => closeAllMobilePanels());
     }
     
-    // 🔹 إغلاق الـ sidebar بعد التنقل
-    if (setIsOpen) setIsOpen(false); // ← آمنة حتى لو setIsOpen مش موجود
   };
 
   return (
@@ -735,6 +749,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
                         brands={goalkeeperGlovesBrands}
                         onShowAll={handleShowAllClick}
                         onSelectCategory={handleSubcategoryClick}
+                        onCloseAll={closeAllMobilePanels}
                         onBack={() => {
                           setShowParentDetail(false);
                           setSelectedParentForDetail(null);
@@ -809,7 +824,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
 }
 
 // 🔹 مكون ParentDetailView للعرض في وضع الجوال
-function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, onSelectCategory, onBack, onSelectBrand: externalOnSelectBrand, isRTL, lang, t }) {
+function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, onSelectCategory, onCloseAll, onBack, onSelectBrand: externalOnSelectBrand, isRTL, lang, t }) {
   if (!selectedParent) return null;
 
   const router = useRouter();
@@ -856,28 +871,24 @@ function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, 
   // 🔹 Handler للضغط على براند
   const handleBrandClick = useCallback((brandName) => {
     if (!brandName) return;
-    
+
+    if (onCloseAll) onCloseAll();
+
     // 🔹 إذا كان هناك externalOnSelectBrand (من GoalkeeperGloves)، استخدمه
     if (externalOnSelectBrand) {
       externalOnSelectBrand(brandName);
-      // إغلاق الـ sidebar بعد التنقل
-      if (onBack) {
-        onBack();
-      }
+      queueMicrotask(() => onCloseAll && onCloseAll());
       return;
     }
-    
+
     // بناء URL مع فلتر البراند (للصفحات الأخرى)
-    const brandUrl = buildParentPageUrl('/GoalkeeperGloves', {}, brandName);
-    
+    const brandUrl = buildParentPageUrl("/GoalkeeperGloves", {}, brandName);
+
     if (brandUrl) {
       router.push(brandUrl, { scroll: false });
-      // إغلاق الـ sidebar بعد التنقل
-      if (onBack) {
-        onBack();
-      }
     }
-  }, [router, onBack, externalOnSelectBrand]);
+    queueMicrotask(() => onCloseAll && onCloseAll());
+  }, [router, onCloseAll, externalOnSelectBrand]);
 
   return (
     <div className="flex flex-col h-full">
