@@ -21,8 +21,37 @@ import { useTranslation } from "../contexts/TranslationContext";
 import { useAuth } from "../contexts/AuthContext";
 import { usePublicNavSettings } from "../contexts/PublicNavSettingsContext";
 import { SITE_LOGO_FALLBACK_URL } from "../lib/siteLogoFromSettings";
-import DynamicText from "../components/DynamicText";
 import { buildParentPageUrl, toSlug } from "../lib/urlSlugHelper";
+
+const SIDEBAR_NAV_CACHE_KEY = "sidebar_nav_cache_v1";
+const SIDEBAR_BRANDS_CACHE_KEY = "sidebar_gk_brands_cache_v1";
+const SIDEBAR_CACHE_TTL_MS = 15 * 60 * 1000;
+
+function readSidebarCache(key) {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed.ts || Date.now() - parsed.ts > SIDEBAR_CACHE_TTL_MS) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    return parsed.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSidebarCache(key, data) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 function getParentRouteFromCategoryName(name) {
   let nameStr = "";
@@ -55,6 +84,22 @@ function isGoalkeeperGlovesCategoryName(name) {
   return n.includes("goalkeeper") && n.includes("gloves");
 }
 
+function getLocalizedName(rawName, lang) {
+  if (!rawName) return "";
+  if (typeof rawName !== "string") return String(rawName || "");
+  try {
+    const parsed = JSON.parse(rawName);
+    if (parsed && typeof parsed === "object") {
+      if (parsed[lang]) return String(parsed[lang]);
+      if (parsed.en) return String(parsed.en);
+      if (parsed.ar) return String(parsed.ar);
+    }
+  } catch {
+    // plain string, return as-is
+  }
+  return rawName;
+}
+
 /** Flatten main roots + nested subCategories for slug/id lookup (handleSubcategoryClick). */
 function flattenMainNavCategories(mains) {
   const list = [];
@@ -79,7 +124,7 @@ function flattenMainNavCategories(mains) {
   return list;
 }
 
-export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: externalCategories, onSelectCategory: externalOnSelectCategory, brands: externalBrands = [], onSelectBrand: externalOnSelectBrand }) {
+export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: externalCategories, onSelectCategory: externalOnSelectCategory, brands: externalBrands = [], onSelectBrand: externalOnSelectBrand }) {
   const { siteLogoUrl } = usePublicNavSettings();
   const logoSrc = siteLogoUrl || SITE_LOGO_FALLBACK_URL;
   const [categories, setCategories] = useState([]);
@@ -94,7 +139,8 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
   const router = useRouter();
   const pathname = usePathname();
   // const { openChat } = useChat();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  const effectiveIsRTL = typeof isRTL === "boolean" ? isRTL : lang === "ar";
   const { user, logout } = useAuth();
 
   // Memoize externalCategories to prevent dependency array changes
@@ -108,6 +154,13 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
+      const cachedNav = readSidebarCache(SIDEBAR_NAV_CACHE_KEY);
+      if (cachedNav && !cancelled) {
+        setMainNavRoots(Array.isArray(cachedNav.mainNavRoots) ? cachedNav.mainNavRoots : []);
+        setCategories(Array.isArray(cachedNav.categories) ? cachedNav.categories : []);
+        setNavSource(cachedNav.navSource || "legacy");
+        return;
+      }
       try {
         const mainData = await graphqlRequest(MAIN_ROOT_CATEGORIES_QUERY);
         if (cancelled) return;
@@ -120,8 +173,14 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
             : sorted;
           if (rootsOnlyMain.length > 0) {
             setMainNavRoots(rootsOnlyMain);
-            setCategories(flattenMainNavCategories(rootsOnlyMain));
+            const flattened = flattenMainNavCategories(rootsOnlyMain);
+            setCategories(flattened);
             setNavSource("main");
+            writeSidebarCache(SIDEBAR_NAV_CACHE_KEY, {
+              mainNavRoots: rootsOnlyMain,
+              categories: flattened,
+              navSource: "main",
+            });
             return;
           }
         }
@@ -147,12 +206,22 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
           setMainNavRoots(mainsFromAll);
           setCategories(all);
           setNavSource("main");
+          writeSidebarCache(SIDEBAR_NAV_CACHE_KEY, {
+            mainNavRoots: mainsFromAll,
+            categories: all,
+            navSource: "main",
+          });
           return;
         }
 
         setCategories(all.length > 0 ? all : externalCategoriesMemo || []);
         setMainNavRoots([]);
         setNavSource("legacy");
+        writeSidebarCache(SIDEBAR_NAV_CACHE_KEY, {
+          mainNavRoots: [],
+          categories: all.length > 0 ? all : externalCategoriesMemo || [],
+          navSource: "legacy",
+        });
       } catch (error) {
         console.error("❌ Error fetching categories:", error);
         if (!cancelled && externalCategoriesMemo) {
@@ -208,6 +277,25 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
       return orderA - orderB;
     });
   }, [categories]);
+
+  const categoryById = useMemo(() => {
+    const map = new Map();
+    for (const cat of categories || []) {
+      if (cat?.id === null || cat?.id === undefined) continue;
+      map.set(String(cat.id), cat);
+    }
+    return map;
+  }, [categories]);
+
+  const parentCategoryById = useMemo(() => {
+    const map = new Map();
+    for (const item of parentCategories || []) {
+      const pid = item?.parent?.id;
+      if (pid === null || pid === undefined) continue;
+      map.set(String(pid), item);
+    }
+    return map;
+  }, [parentCategories]);
 
   // 🔹 دالة لتحويل route إلى parent category ID (main nav أو legacy)
   const getParentIdFromRoute = useCallback(
@@ -295,10 +383,16 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
   // Brands for Goalkeeper Gloves — Query.productsWithFilters (no rootCategory.products)
   useEffect(() => {
     const fetchBrands = async () => {
+      const cachedBrands = readSidebarCache(SIDEBAR_BRANDS_CACHE_KEY);
+      if (cachedBrands && Array.isArray(cachedBrands) && cachedBrands.length > 0) {
+        setGoalkeeperGlovesBrands(cachedBrands);
+        return;
+      }
       try {
         const products = await fetchClientProductsByVertical("goalkeeperGloves", { limit: 96 });
         const brandsList = [...new Set(products.map((p) => p.brand_name).filter(Boolean))];
         setGoalkeeperGlovesBrands(brandsList);
+        writeSidebarCache(SIDEBAR_BRANDS_CACHE_KEY, brandsList);
       } catch (error) {
         console.error("❌ Error fetching brands for GoalkeeperGloves:", error);
         if (externalBrands && externalBrands.length > 0) {
@@ -310,6 +404,28 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
     fetchBrands();
   }, []);
 
+  // Keep sidebar prefetch lightweight to avoid competing with active mobile navigation.
+  useEffect(() => {
+    if (!isOpen) return;
+    const subcategorySlugs = categories
+      .filter((c) => c?.slug && c?.parent)
+      .slice(0, 6)
+      .map((c) => `/products/${encodeURIComponent(c.slug)}`);
+    subcategorySlugs.forEach((route) => router.prefetch(route));
+  }, [router, categories, isOpen]);
+
+  useEffect(() => {
+    if (!showParentDetail || !selectedParentForDetail?.parent?.id) return;
+    const parentId = String(selectedParentForDetail.parent.id);
+    const showAllRoute = getParentRoute(selectedParentForDetail.parent.name);
+    if (showAllRoute) router.prefetch(showAllRoute);
+    const childRoutes = categories
+      .filter((c) => c?.parent && String(c.parent.id) === parentId && c?.slug)
+      .slice(0, 8)
+      .map((c) => `/products/${encodeURIComponent(c.slug)}`);
+    childRoutes.forEach((route) => router.prefetch(route));
+  }, [showParentDetail, selectedParentForDetail, categories, router]);
+
   const getParentRoute = (name) => getParentRouteFromCategoryName(name);
 
   // 🔹 التنقل لصفحة الـ parent (زر "عرض الكل" / جذر بلا فرعيات)
@@ -318,35 +434,13 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
 
     if (route) {
       localStorage.setItem("sidebar_open_parent_id", String(parentId));
-
-      const parentRoutes = [
-        "/GoalkeeperGloves",
-        "/FootballBoots",
-        "/Goalkeeperapparel",
-        "/Goalkeeperequipment",
-        "/Teamsport",
-        "/Sale",
-      ];
-
-      const isSubcategoryPage = pathname.startsWith("/products/");
-      const isCurrentParentPage = parentRoutes.some(
-        (parentRoute) => pathname === parentRoute || pathname.startsWith(`${parentRoute}/`)
-      );
-      const isSameParentPage = pathname === route || pathname.startsWith(`${route}/`);
-
-      if (isSubcategoryPage || isSameParentPage || (isCurrentParentPage && pathname !== route)) {
-        window.location.replace(route);
-      } else {
-        window.location.replace(route);
-      }
+      router.push(route, { scroll: false });
 
       setShowParentDetail(false);
       setSelectedParentForDetail(null);
       if (setIsOpen) setIsOpen(false);
     } else {
-      const parentCategory = categories.find(
-        (cat) => String(cat.id) === String(parentId) || cat.id === parentId
-      );
+      const parentCategory = categoryById.get(String(parentId));
 
       if (parentCategory?.slug) {
         const slug = encodeURIComponent(parentCategory.slug);
@@ -363,6 +457,8 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
   };
 
   const handleParentClick = (parentId, parentName, event) => {
+    const isMobile = isOpen;
+
     if (navSource === "main") {
       const main = mainNavRoots.find((m) => String(m.id) === String(parentId));
       if (!main) return;
@@ -375,19 +471,23 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
         handleShowAllClick(parentId, main.name);
         return;
       }
+
+      // في الموبايل: افتح ستارة جانبية ثانية بدل dropdown
+      if (isMobile) {
+        setSelectedParentForDetail({
+          parent: { id: main.id, name: main.name },
+        });
+        setShowParentDetail(true);
+        return;
+      }
+
       setOpenParentId((prev) => (String(prev) === String(parentId) ? null : parentId));
       return;
     }
 
-    // 🔹 التحقق من وضع الجوال (الـ drawer مفتوح فقط على الجوال بسبب lg:hidden)
-    // إذا كان isOpen = true، فهذا يعني أننا في وضع الجوال
-    const isMobile = isOpen;
-    
     // 🔹 في وضع الجوال: عرض شاشة التفاصيل بدلاً من التنقل المباشر
     if (isMobile) {
-      const parentFromParentCategories = parentCategories.find(item => 
-        String(item.parent?.id) === String(parentId) || item.parent?.id === parentId
-      );
+      const parentFromParentCategories = parentCategoryById.get(String(parentId));
       
       if (parentFromParentCategories) {
         setSelectedParentForDetail(parentFromParentCategories);
@@ -398,9 +498,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
     
     // 🔹 في وضع الديسكتوب: التنقل المباشر (السلوك الحالي)
     // 🔹 البحث عن الـ parent category من categories
-    const parentCategory = categories.find((cat) => {
-      return String(cat.id) === String(parentId) || cat.id === parentId;
-    });
+    const parentCategory = categoryById.get(String(parentId));
 
     // 🔹 الحصول على الـ route الرئيسي من اسم الـ parent
     const route = getParentRoute(parentName || parentCategory?.name);
@@ -408,69 +506,22 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
     if (route) {
       // 🔹 حفظ parentId في localStorage لفتح الـ subcategories بعد التنقل
       localStorage.setItem('sidebar_open_parent_id', String(parentId));
-      
-      // 🔹 قائمة parent category routes
-      const parentRoutes = [
-        '/GoalkeeperGloves',
-        '/FootballBoots',
-        '/Goalkeeperapparel',
-        '/Goalkeeperequipment',
-        '/Teamsport',
-        '/Sale'
-      ];
-      
-      // 🔹 التحقق من أننا في صفحة subcategory (مثل /products/...)
-      const isSubcategoryPage = pathname.startsWith('/products/');
-      
-      // 🔹 التحقق من أننا في parent category page حالياً
-      const isCurrentParentPage = parentRoutes.some(parentRoute => pathname === parentRoute || pathname.startsWith(parentRoute + '/'));
-      
-      // 🔹 التحقق إذا كنا في نفس parent category page
-      const isSameParentPage = pathname === route || pathname.startsWith(route + '/');
-      
-      if (isSubcategoryPage) {
-        // 🔹 إذا كنا في صفحة subcategory، عمل reload كامل للصفحة
-        // استخدام window.location.replace لضمان reload كامل واستدعاء البيانات من الخادم
-        window.location.replace(route);
-        console.log("✅ Reloading parent category page from subcategory with fresh data:", route, parentName);
-      } else if (isSameParentPage) {
-        // 🔹 إذا كنا في نفس parent category page، عمل reload لاستدعاء البيانات مرة أخرى
-        window.location.replace(route);
-        console.log("✅ Reloading same parent category page to refresh data:", route, parentName);
-      } else if (isCurrentParentPage && pathname !== route) {
-        // 🔹 إذا كنا في parent category مختلف وننتقل إلى parent category آخر، عمل reload كامل
-        window.location.replace(route);
-        console.log("✅ Reloading from parent to parent category:", pathname, "->", route);
-      } else {
-        // 🔹 في جميع الحالات الأخرى، عمل reload كامل للصفحة
-        window.location.replace(route);
-        console.log("✅ Reloading parent category page:", route, parentName);
-      }
+      router.push(route, { scroll: false });
       
       if (setIsOpen) setIsOpen(false); // إغلاق الـ drawer على الموبايل
     } else {
       // Fallback: استخدام products/slug إذا لم نجد route رئيسي
       if (parentCategory?.slug) {
         const slug = encodeURIComponent(parentCategory.slug);
-        const isSubcategoryPage = pathname.startsWith('/products/') && pathname !== `/products/${slug}`;
-        
-        if (isSubcategoryPage) {
-          // 🔹 عمل reload إذا كنا في صفحة subcategory مختلفة
-          window.location.href = `/products/${slug}`;
-        } else {
         router.push(`/products/${slug}`, { scroll: false });
-        }
-        console.log("✅ Navigating to products page:", `/products/${slug}`);
         if (setIsOpen) setIsOpen(false);
       } else {
         // Fallback: toggle للفتح/الإغلاق إذا لم يتم العثور على route أو slug
         console.warn("⚠️ Parent category not found or missing route for ID:", parentId, "Name:", parentName);
-        const parentFromParentCategories = parentCategories.find(item => 
-          String(item.parent?.id) === String(parentId) || item.parent?.id === parentId
-        );
+        const parentFromParentCategories = parentCategoryById.get(String(parentId));
         
         if (parentFromParentCategories?.parent?.name) {
-          console.log("ℹ️ Found parent but no route, toggling instead");
+          // No route/slug available; fallback to desktop toggle behavior.
         }
         
         if (openParentId === parentId) {
@@ -545,25 +596,18 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
 
   // دالة التنقل للـ Products مع التأكد من setIsOpen
   const handleSubcategoryClick = (subId) => {
-    console.log("Subcategory ID clicked:", subId);
-    
     // 🔹 إغلاق شاشة التفاصيل عند التنقل
     setShowParentDetail(false);
     setSelectedParentForDetail(null);
     
     // 🔹 البحث عن slug من categories وتحويل لصفحة slug
     // يجب التنقل دائمًا إلى صفحة المنتجات، حتى لو كان هناك externalOnSelectCategory
-    const selectedCat = categories.find((cat) => {
-      // Try to match by id (string or number)
-      return String(cat.id) === String(subId) || cat.id === subId;
-    });
+    const selectedCat = categoryById.get(String(subId));
     
     if (selectedCat?.slug) {
       // Navigate to products page with category slug
       const slug = encodeURIComponent(selectedCat.slug);
       router.push(`/products/${slug}`, { scroll: false });
-      console.log("✅ Navigating to:", `/products/${slug}`);
-      
       // 🔹 استدعاء externalOnSelectCategory إذا كان موجودًا (للتحديث الإضافي)
       // ولكن بعد التنقل، وليس بدلاً منه
       if (externalOnSelectCategory) {
@@ -587,7 +631,10 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
   return (
     <>
       {/* Sidebar للشاشات الكبيرة - يعرض parentCategories مع subcategories (نفس منطق الموبايل) */}
-      <aside className={`hidden lg:block bg-black text-white w-full h-screen py-4 px-3 font-sans overflow-y-auto ${isRTL ? "rtl" : "ltr"}`}>
+      <aside
+        className={`hidden lg:block bg-black text-white w-full h-screen py-4 px-3 font-sans overflow-y-auto ${effectiveIsRTL ? "text-right" : "text-left"}`}
+        dir={effectiveIsRTL ? "rtl" : "ltr"}
+      >
         <SidebarContent
           navSource={navSource}
           mainNavRoots={mainNavRoots}
@@ -601,7 +648,8 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
           onSelectBrand={handleBrandClick}
           isOpen={false}
           onShowGoalkeeperGlovesDetail={null}
-          isRTL={isRTL}
+          isRTL={effectiveIsRTL}
+          lang={lang}
           t={t}
         />
       </aside>
@@ -616,22 +664,23 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.8 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
+              transition={{ duration: 0.18 }}
               onClick={() => setIsOpen(false)}
             />
 
             {/* Drawer */}
             <motion.div
-              className="fixed top-0 h-full w-64 bg-black text-white z-70 shadow-xl py-4 px-3 font-sans overflow-y-auto lg:hidden flex flex-col"
-              initial={{ x: isRTL ? '100%' : '-100%' }}
+              className={`fixed top-0 h-full w-64 bg-black text-white z-70 shadow-xl py-4 px-3 font-sans overflow-y-auto lg:hidden flex flex-col ${effectiveIsRTL ? "text-right" : "text-left"}`}
+              initial={{ x: effectiveIsRTL ? '100%' : '-100%' }}
               animate={{ x: 0 }}
-              exit={{ x: isRTL ? '100%' : '-100%' }}
-              transition={{ type: 'tween', duration: 0.4 }}
-              style={{ right: isRTL ? 0 : 'auto', left: isRTL ? 'auto' : 0 }}
+              exit={{ x: effectiveIsRTL ? '100%' : '-100%' }}
+              transition={{ type: 'tween', duration: 0.2 }}
+              style={{ right: effectiveIsRTL ? 0 : 'auto', left: effectiveIsRTL ? 'auto' : 0 }}
+              dir={effectiveIsRTL ? "rtl" : "ltr"}
             >
               {/* زر الإغلاق */}
               {!showParentDetail && (
-                <div className="flex justify-between items-center mb-4">
+                <div className={`flex items-center mb-4 ${effectiveIsRTL ? "flex-row-reverse justify-between" : "justify-between"}`}>
                   <h2 className="text-lg font-semibold">{t("Menu")}</h2>
                   <button
                     onClick={() => setIsOpen(false)}
@@ -642,17 +691,43 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
                 </div>
               )}
 
-              {/* قائمة الأقسام أو ParentDetailView مع Animation */}
+              {/* الستارة الأولى + الستارة الثانية (تفاصيل الـ parent) */}
               <div className="flex-1 relative overflow-hidden">
-                <AnimatePresence mode="wait">
-                  {showParentDetail && selectedParentForDetail ? (
+                <motion.div
+                  key="sidebar-content"
+                  initial={{ x: effectiveIsRTL ? '100%' : '-100%', opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ type: 'tween', duration: 0.16, ease: 'easeInOut' }}
+                  className="absolute inset-0"
+                >
+                  <SidebarContent
+                    navSource={navSource}
+                    mainNavRoots={mainNavRoots}
+                    parentCategories={parentCategories}
+                    categories={categories}
+                    openParentId={openParentId}
+                    handleParentClick={handleParentClick}
+                    onSelectCategory={handleSubcategoryClick}
+                    onShowAllClick={handleShowAllClick}
+                    goalkeeperGlovesBrands={goalkeeperGlovesBrands}
+                    onSelectBrand={handleBrandClick}
+                    isOpen={isOpen}
+                    onShowGoalkeeperGlovesDetail={handleShowGoalkeeperGlovesDetail}
+                    isRTL={effectiveIsRTL}
+                    lang={lang}
+                    t={t}
+                  />
+                </motion.div>
+
+                <AnimatePresence>
+                  {showParentDetail && selectedParentForDetail && (
                     <motion.div
-                      key="parent-detail"
-                      initial={{ x: isRTL ? '-100%' : '100%', opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: isRTL ? '-100%' : '100%', opacity: 0 }}
-                      transition={{ type: 'tween', duration: 0.3, ease: 'easeInOut' }}
-                      className="absolute inset-0"
+                      key="parent-detail-panel"
+                      initial={{ x: effectiveIsRTL ? '-100%' : '100%' }}
+                      animate={{ x: 0 }}
+                      exit={{ x: effectiveIsRTL ? '-100%' : '100%' }}
+                      transition={{ type: 'tween', duration: 0.16, ease: 'easeInOut' }}
+                      className="absolute inset-0 bg-black z-10 shadow-2xl"
                     >
                       <ParentDetailView
                         selectedParent={selectedParentForDetail}
@@ -665,33 +740,8 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
                           setSelectedParentForDetail(null);
                         }}
                         onSelectBrand={externalOnSelectBrand}
-                        isRTL={isRTL}
-                        t={t}
-                      />
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="sidebar-content"
-                      initial={{ x: isRTL ? '100%' : '-100%', opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: isRTL ? '100%' : '-100%', opacity: 0 }}
-                      transition={{ type: 'tween', duration: 0.3, ease: 'easeInOut' }}
-                      className="absolute inset-0"
-                    >
-                      <SidebarContent
-                        navSource={navSource}
-                        mainNavRoots={mainNavRoots}
-                        parentCategories={parentCategories}
-                        categories={categories}
-                        openParentId={openParentId}
-                        handleParentClick={handleParentClick}
-                        onSelectCategory={handleSubcategoryClick}
-                        onShowAllClick={handleShowAllClick}
-                        goalkeeperGlovesBrands={goalkeeperGlovesBrands}
-                        onSelectBrand={handleBrandClick}
-                        isOpen={isOpen}
-                        onShowGoalkeeperGlovesDetail={handleShowGoalkeeperGlovesDetail}
-                        isRTL={isRTL}
+                        isRTL={effectiveIsRTL}
+                        lang={lang}
                         t={t}
                       />
                     </motion.div>
@@ -701,7 +751,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
 
               {/* أيقونات أسفل الستارة */}
               <div className={`mt-auto pt-4 border-t border-neutral-700 flex flex-col gap-3`}>
-                <div className={`flex ${isRTL ? "flex-row-reverse justify-center" : "justify-between"} items-center w-full px-3 gap-4`}>
+                <div className={`flex ${effectiveIsRTL ? "flex-row-reverse justify-between" : "justify-between"} items-center w-full px-3 gap-4`}>
                   <Link href="/">
                     <Image
                       key={logoSrc}
@@ -759,14 +809,11 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL = false, categories: 
 }
 
 // 🔹 مكون ParentDetailView للعرض في وضع الجوال
-function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, onSelectCategory, onBack, onSelectBrand: externalOnSelectBrand, isRTL, t }) {
+function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, onSelectCategory, onBack, onSelectBrand: externalOnSelectBrand, isRTL, lang, t }) {
   if (!selectedParent) return null;
 
   const router = useRouter();
   const parent = selectedParent.parent;
-  
-  // 🔹 الحصول على اللغة الحالية
-  const { lang } = useTranslation();
   
   const subCategories = categories
     .filter(sub => sub.parent?.id === parent.id)
@@ -838,7 +885,7 @@ function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, 
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, delay: 0.1 }}
+        transition={{ duration: 0.14 }}
         className="flex items-center gap-3 mb-4 pb-3 border-b border-neutral-700"
       >
         <button
@@ -857,7 +904,7 @@ function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, 
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, delay: 0.15 }}
+        transition={{ duration: 0.14 }}
         className="px-3 py-2 mb-2"
       >
         <h3 className="text-base font-medium text-white">
@@ -869,9 +916,9 @@ function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, 
       <motion.button
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, delay: 0.2 }}
+        transition={{ duration: 0.14 }}
         onClick={() => onShowAll(parent.id, parent.name)}
-        className="px-3 py-2 text-sm text-white hover:bg-neutral-800 hover:text-amber-400 transition-all rounded mb-2 text-left"
+        className={`px-3 py-2 text-sm text-white hover:bg-neutral-800 hover:text-amber-400 transition-all rounded mb-2 ${isRTL ? "text-right" : "text-left"}`}
         dir={isRTL ? "rtl" : "ltr"}
       >
         {t("Show all")}
@@ -881,18 +928,18 @@ function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, 
       {(subCategories.length > 0 || (isGoalkeeperGloves && brands && brands.length > 0)) && (
         <ul className="space-y-1 flex-1 overflow-y-auto">
           {/* Subcategories */}
-          {subCategories.map((sub, index) => (
+          {subCategories.map((sub) => (
             <motion.li
               key={sub.id}
               initial={{ opacity: 0, x: isRTL ? 20 : -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ 
-                duration: 0.2, 
-                delay: 0.25 + (index * 0.03),
+                duration: 0.14,
+                delay: 0,
                 ease: 'easeOut'
               }}
               whileTap={{ scale: 0.98 }}
-              className="px-3 py-2.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded active:bg-neutral-700"
+              className={`px-3 py-2.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white transition-all rounded active:bg-neutral-700 ${isRTL ? "hover:-translate-x-1 text-right" : "hover:translate-x-1 text-left"}`}
               onClick={() => {
                 if (onSelectCategory) {
                   onSelectCategory(sub.id);
@@ -900,7 +947,7 @@ function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, 
               }}
               dir={isRTL ? "rtl" : "ltr"}
             >
-              <DynamicText>{sub.name}</DynamicText>
+              {getLocalizedName(sub.name, lang)}
             </motion.li>
           ))}
           
@@ -917,12 +964,12 @@ function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, 
                     initial={{ opacity: 0, x: isRTL ? 20 : -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ 
-                      duration: 0.2, 
-                      delay: 0.25 + (subCategories.length * 0.03) + (index * 0.03),
+                      duration: 0.14,
+                      delay: 0,
                       ease: 'easeOut'
                     }}
                     whileTap={{ scale: 0.98 }}
-                    className="px-3 py-2.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded active:bg-neutral-700"
+                    className={`px-3 py-2.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white transition-all rounded active:bg-neutral-700 ${isRTL ? "hover:-translate-x-1 text-right" : "hover:translate-x-1 text-left"}`}
                     onClick={() => handleBrandClick(brandName)}
                     dir={isRTL ? "rtl" : "ltr"}
                   >
@@ -951,10 +998,17 @@ function SidebarContent({
   goalkeeperGlovesBrands = [],
   onSelectBrand,
   isRTL,
+  lang,
   t,
   isOpen,
   onShowGoalkeeperGlovesDetail,
 }) {
+  const rowLayoutClass = isRTL ? "text-right" : "flex-row text-left";
+  const subItemHoverTranslateClass = isRTL ? "hover:-translate-x-1" : "hover:translate-x-1";
+  const nestedListClass = isRTL
+    ? "mt-1 mb-2 space-y-0.5 mr-4 ml-0 border-r-2 border-neutral-700 pr-2"
+    : "mt-1 mb-2 space-y-0.5 ml-4 mr-0 border-l-2 border-neutral-700 pl-2";
+
   const isGoalkeeperGlovesParent = useCallback((parentName) => {
     if (!parentName) return false;
     
@@ -978,7 +1032,7 @@ function SidebarContent({
           const subs = [...(main.subCategories || [])].sort(
             (a, b) => (a.order ?? 9999) - (b.order ?? 9999)
           );
-          const rowExpanded = String(openParentId) === String(main.id);
+          const rowExpanded = !isOpen && String(openParentId) === String(main.id);
           const isGk = isGoalkeeperGlovesCategoryName(main.name);
           const showGkBrands =
             isGk &&
@@ -990,16 +1044,18 @@ function SidebarContent({
           return (
             <li key={main.id} className="border-b border-neutral-700 pb-1">
               <div
-                className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all rounded"
+                className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all rounded ${rowLayoutClass}`}
                 onClick={(e) => handleParentClick(main.id, main.name, e)}
                 dir={isRTL ? "rtl" : "ltr"}
               >
                 <span className="text-sm font-medium text-white hover:text-amber-400 transition-colors">
-                  <DynamicText>{main.name}</DynamicText>
+                  {getLocalizedName(main.name, lang)}
                 </span>
                 {hasChevron && (
                   <div className="flex-shrink-0 chevron-icon">
-                    {rowExpanded ? (
+                    {isOpen ? (
+                      <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
+                    ) : rowExpanded ? (
                       <ChevronDown size={16} className="text-neutral-400" />
                     ) : (
                       <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
@@ -1010,7 +1066,7 @@ function SidebarContent({
 
               {rowExpanded && (subs.length > 0 || showGkBrands) && (
                 <ul
-                  className={`mt-1 mb-2 space-y-0.5 ${isRTL ? "mr-4 ml-0 border-r-2 border-neutral-700" : "ml-4 mr-0 border-l-2 border-neutral-700"} pl-2`}
+                  className={nestedListClass}
                 >
                   <li
                     className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-500 cursor-pointer hover:text-amber-400"
@@ -1025,11 +1081,11 @@ function SidebarContent({
                   {subs.map((sub) => (
                     <li
                       key={sub.id}
-                      className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                      className={`px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white transition-all rounded ${subItemHoverTranslateClass} ${isRTL ? "text-right" : "text-left"}`}
                       onClick={() => onSelectCategory && onSelectCategory(sub.id)}
                       dir={isRTL ? "rtl" : "ltr"}
                     >
-                      <DynamicText>{sub.name}</DynamicText>
+                      {getLocalizedName(sub.name, lang)}
                     </li>
                   ))}
                   {showGkBrands &&
@@ -1042,7 +1098,7 @@ function SidebarContent({
                       return (
                         <li
                           key={`brand-${brandName}-${index}`}
-                          className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                          className={`px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white transition-all rounded ${subItemHoverTranslateClass} ${isRTL ? "text-right" : "text-left"}`}
                           onClick={() => onSelectBrand && onSelectBrand(brandName)}
                           dir={isRTL ? "rtl" : "ltr"}
                         >
@@ -1070,7 +1126,7 @@ function SidebarContent({
           (c) => !c.parent && String(c.id) === String(parent.id)
         );
         const subCategories = categories.filter((sub) => sub.parent?.id === parent.id);
-        const rowExpanded = openParentId === parent.id;
+        const rowExpanded = !isOpen && openParentId === parent.id;
         const hasSubCategories = subCategories.length > 0;
         const isGoalkeeperGloves = isGoalkeeperGlovesParent(parent.name);
         const hasBrands =
@@ -1082,16 +1138,18 @@ function SidebarContent({
         return (
           <li key={parent.id} className="border-b border-neutral-700 pb-1">
             <div
-                className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all rounded"
+                className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all rounded ${rowLayoutClass}`}
               onClick={(e) => handleParentClick(parent.id, parent.name, e)}
               dir={isRTL ? "rtl" : "ltr"}
             >
                 <span className="text-sm font-medium text-white hover:text-amber-400 transition-colors">
-                  <DynamicText>{parent.name}</DynamicText>
+                  {getLocalizedName(parent.name, lang)}
                 </span>
                 {(hasSubCategories || hasBrands) && (
                   <div className="flex-shrink-0 chevron-icon">
-                    {rowExpanded ? (
+                    {isOpen ? (
+                      <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
+                    ) : rowExpanded ? (
                       <ChevronDown size={16} className="text-neutral-400" />
                     ) : (
                       <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
@@ -1101,7 +1159,7 @@ function SidebarContent({
             </div>
 
               {rowExpanded && (hasSubCategories || hasBrands) && (
-                <ul className={`mt-1 mb-2 space-y-0.5 ${isRTL ? "mr-4 ml-0 border-r-2 border-neutral-700" : "ml-4 mr-0 border-l-2 border-neutral-700"} pl-2`}>
+                <ul className={nestedListClass}>
                 {/* Subcategories */}
                 {subCategories
                   .sort((a, b) => {
@@ -1112,11 +1170,11 @@ function SidebarContent({
                   .map(sub => (
                     <li
                       key={sub.id}
-                        className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                        className={`px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white transition-all rounded ${subItemHoverTranslateClass} ${isRTL ? "text-right" : "text-left"}`}
                         onClick={() => onSelectCategory && onSelectCategory(sub.id)}
                         dir={isRTL ? "rtl" : "ltr"}
                     >
-                      <DynamicText>{sub.name}</DynamicText>
+                      {getLocalizedName(sub.name, lang)}
                     </li>
                   ))}
                 
@@ -1129,7 +1187,7 @@ function SidebarContent({
                       return (
                         <li
                           key={`brand-${brandName}-${index}`}
-                          className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                          className={`px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white transition-all rounded ${subItemHoverTranslateClass} ${isRTL ? "text-right" : "text-left"}`}
                           onClick={() => onSelectBrand && onSelectBrand(brandName)}
                           dir={isRTL ? "rtl" : "ltr"}
                         >
@@ -1159,7 +1217,7 @@ function SidebarContent({
           const subs = categories
             .filter((sub) => sub.parent && String(sub.parent.id) === String(main.id))
             .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
-          const rowExpanded = String(openParentId) === String(main.id);
+          const rowExpanded = !isOpen && String(openParentId) === String(main.id);
           const isGk = isGoalkeeperGlovesCategoryName(main.name);
           const showGkBrands =
             isGk &&
@@ -1170,16 +1228,18 @@ function SidebarContent({
           return (
             <li key={main.id} className="border-b border-neutral-700 pb-1">
               <div
-                className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all rounded"
+                className={`flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-neutral-700 transition-all rounded ${rowLayoutClass}`}
                 onClick={(e) => handleParentClick(main.id, main.name, e)}
                 dir={isRTL ? "rtl" : "ltr"}
               >
                 <span className="text-sm font-medium text-white hover:text-amber-400 transition-colors">
-                  <DynamicText>{main.name}</DynamicText>
+                  {getLocalizedName(main.name, lang)}
                 </span>
                 {hasChevron && (
                   <div className="flex-shrink-0 chevron-icon">
-                    {rowExpanded ? (
+                    {isOpen ? (
+                      <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
+                    ) : rowExpanded ? (
                       <ChevronDown size={16} className="text-neutral-400" />
                     ) : (
                       <ChevronRight size={16} className={`text-neutral-400 ${isRTL ? "rotate-180" : ""}`} />
@@ -1189,7 +1249,7 @@ function SidebarContent({
               </div>
               {rowExpanded && (subs.length > 0 || showGkBrands) && (
                 <ul
-                  className={`mt-1 mb-2 space-y-0.5 ${isRTL ? "mr-4 ml-0 border-r-2 border-neutral-700" : "ml-4 mr-0 border-l-2 border-neutral-700"} pl-2`}
+                  className={nestedListClass}
                 >
                   <li
                     className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-500 cursor-pointer hover:text-amber-400"
@@ -1204,11 +1264,11 @@ function SidebarContent({
                   {subs.map((sub) => (
                     <li
                       key={sub.id}
-                      className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                      className={`px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white transition-all rounded ${subItemHoverTranslateClass} ${isRTL ? "text-right" : "text-left"}`}
                       onClick={() => onSelectCategory && onSelectCategory(sub.id)}
                       dir={isRTL ? "rtl" : "ltr"}
                     >
-                      <DynamicText>{sub.name}</DynamicText>
+                      {getLocalizedName(sub.name, lang)}
                     </li>
                   ))}
                   {showGkBrands &&
@@ -1221,7 +1281,7 @@ function SidebarContent({
                       return (
                         <li
                           key={`fb-${brandName}-${index}`}
-                          className="px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white hover:translate-x-1 transition-all rounded"
+                          className={`px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:bg-neutral-800 hover:text-white transition-all rounded ${subItemHoverTranslateClass} ${isRTL ? "text-right" : "text-left"}`}
                           onClick={() => onSelectBrand && onSelectBrand(brandName)}
                           dir={isRTL ? "rtl" : "ltr"}
                         >

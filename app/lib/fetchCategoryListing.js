@@ -1,5 +1,9 @@
 import { graphqlClient } from "./graphqlClient";
-import { GET_CATEGORIES_ONLY_QUERY, PRODUCTS_WITH_FILTERS_LISTING_QUERY } from "./queries";
+import {
+  GET_CATEGORIES_ONLY_QUERY,
+  PRODUCTS_WITH_FILTERS_LISTING_QUERY,
+  PRODUCTS_WITH_FILTERS_QUERY,
+} from "./queries";
 import { buildProductFilters } from "./productFilters";
 import { findCategoryBySlugForListing } from "./categoryResolve";
 import { verticalListingConfig } from "./categoryListingSlugs";
@@ -147,6 +151,10 @@ export async function fetchCategoryListingByVertical(verticalKey, options = {}) 
  * Prevents unbounded loops on huge catalogs; counts may be partial if truncated.
  */
 export const MAX_CATEGORY_FACET_PAGES = 100;
+const DEFAULT_FACET_MAX_PAGES = Number(process.env.LISTING_FACET_MAX_PAGES || 3);
+const FACET_CACHE_TTL_MS = Number(process.env.LISTING_FACET_CACHE_TTL_MS || 5 * 60 * 1000);
+const facetCache = new Map();
+const facetInflight = new Map();
 
 /**
  * Paginate productsWithFilters for a category and aggregate attribute value counts
@@ -160,15 +168,35 @@ export async function fetchCategoryAttributeFacets({
   brandId,
   search,
   limit = DEFAULT_CATEGORY_PAGE_SIZE,
-  maxPages = MAX_CATEGORY_FACET_PAGES,
+  maxPages = DEFAULT_FACET_MAX_PAGES,
 }) {
+  const safeMaxPages = Math.max(
+    1,
+    Math.min(MAX_CATEGORY_FACET_PAGES, Number(maxPages) || DEFAULT_FACET_MAX_PAGES)
+  );
   const filters = buildProductFilters({ categoryId, brandId, search });
+  const cacheKey = JSON.stringify({
+    categoryId: String(categoryId),
+    brandId: brandId == null ? null : String(brandId),
+    search: search == null ? null : String(search),
+    limit: Number(limit) || DEFAULT_CATEGORY_PAGE_SIZE,
+    maxPages: safeMaxPages,
+  });
+
+  const cached = facetCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < FACET_CACHE_TTL_MS) {
+    return cached.value;
+  }
+  if (facetInflight.has(cacheKey)) {
+    return facetInflight.get(cacheKey);
+  }
+
+  const run = (async () => {
   const allProducts = [];
   let offset = 0;
 
-  for (let page = 0; page < maxPages; page += 1) {
-    const data = await graphqlClient.request(PRODUCTS_WITH_FILTERS_LISTING_QUERY, {
-      categoryId,
+  for (let page = 0; page < safeMaxPages; page += 1) {
+    const data = await graphqlClient.request(PRODUCTS_WITH_FILTERS_QUERY, {
       filters,
       limit,
       offset,
@@ -179,5 +207,15 @@ export async function fetchCategoryAttributeFacets({
     offset += limit;
   }
 
-  return buildListingAttributeFacetsFromProducts(allProducts);
+    const result = buildListingAttributeFacetsFromProducts(allProducts);
+    facetCache.set(cacheKey, { ts: Date.now(), value: result });
+    return result;
+  })();
+
+  facetInflight.set(cacheKey, run);
+  try {
+    return await run;
+  } finally {
+    facetInflight.delete(cacheKey);
+  }
 }

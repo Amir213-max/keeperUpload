@@ -35,19 +35,7 @@ export default function DynamicText({ children, className, ...props }) {
   const { translatedText, isTranslating } = useDynamicTranslation(text, lang);
 
   /**
-   * 4️⃣ Logs (مهمة جدًا للتشخيص)
-   */
-  console.log('📦 DynamicText: Render', {
-    original: text.slice(0, 30),
-    translated: translatedText?.slice(0, 30),
-    lang,
-    isTranslating,
-    originalLength: text.length,
-    translatedLength: translatedText?.length,
-  });
-
-  /**
-   * 5️⃣ تحديد النص المعروض
+   * 4️⃣ تحديد النص المعروض
    */
   const displayText = useMemo(() => {
     // CRITICAL: When lang === "en" → ALWAYS show original text
@@ -67,7 +55,7 @@ export default function DynamicText({ children, className, ...props }) {
   }, [isTranslating, translatedText, text, lang]);
 
   /**
-   * 6️⃣ render
+   * 5️⃣ render
    */
   return (
     <span className={className} {...props}>

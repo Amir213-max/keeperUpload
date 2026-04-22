@@ -14,6 +14,8 @@ import {
 
 /** Same idea as HomePageBlocks: prefix relative storage paths from CMS settings */
 const BASE_URL = `${getStorageBaseUrl().replace(/\/+$/, '')}/`;
+const FOOTER_SETTINGS_CACHE_KEY = "footer_public_settings_v1";
+const FOOTER_SETTINGS_CACHE_TTL_MS = 10 * 60 * 1000;
 
 /**
  * Full image URL: resolver (http / base64 / known storage paths), else BASE_URL + relative key.
@@ -79,9 +81,41 @@ export default function Footer() {
   useEffect(() => {
     async function fetchSettings() {
       try {
+        if (typeof window !== "undefined") {
+          const raw = sessionStorage.getItem(FOOTER_SETTINGS_CACHE_KEY);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed?.ts && Date.now() - parsed.ts < FOOTER_SETTINGS_CACHE_TTL_MS) {
+                const cachedSettings = parsed.data || [];
+                const textSettings = cachedSettings.filter(
+                  (s) => s.group && s.group.toLowerCase() === 'footer_text'
+                );
+                setFooterTexts(textSettings);
+                setTranslatedFooterTexts(textSettings);
+                const otherSettings = cachedSettings.filter(
+                  (s) =>
+                    s.group &&
+                    !["footer_text", "social", "offers_label", "logo"].includes(s.group.toLowerCase()) &&
+                    !isPaymentLikeGroup(s.group)
+                );
+                setSettings(otherSettings);
+                const pagmentSettings = cachedSettings.filter((s) => s.group && isPaymentLikeGroup(s.group));
+                setPagmentRows(pagmentSettings);
+                const socials = cachedSettings.filter(
+                  (s) => s.group && s.group.toLowerCase() === 'social'
+                );
+                setSocialLinks(socials);
+                return;
+              }
+            } catch {
+              sessionStorage.removeItem(FOOTER_SETTINGS_CACHE_KEY);
+            }
+          }
+        }
 
-        const res = await fetch('https://keepersport.store/graphql', {
-   method: 'POST',
+        const res = await fetch('/api/graphql', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             query: `
@@ -103,6 +137,12 @@ export default function Footer() {
 
         const data = await res.json();
         const allSettings = data?.data?.publicSettings || [];
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(
+            FOOTER_SETTINGS_CACHE_KEY,
+            JSON.stringify({ ts: Date.now(), data: allSettings })
+          );
+        }
 
         // نصوص الفوتر
         const textSettings = allSettings.filter(

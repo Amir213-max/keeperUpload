@@ -12,6 +12,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { CategoryProvider } from "./contexts/CategoryContext";
 import { PublicNavSettingsProvider } from "./contexts/PublicNavSettingsContext";
 import ProgressBar from "./components/ProgressBar";
+import WebVitalsReporter from "./components/WebVitalsReporter";
 
 
 const geistSans = Geist({
@@ -92,6 +93,7 @@ export default function RootLayout({ children  }) {
 {/* <ChatProvider> */}
 
      <ProgressBar />
+     <WebVitalsReporter />
      <nav aria-label="Main navigation">
        <NavbarWithLinks />
      </nav>

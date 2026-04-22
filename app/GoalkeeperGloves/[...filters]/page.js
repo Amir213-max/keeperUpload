@@ -9,6 +9,8 @@ import {
 } from "../../lib/fetchCategoryListing";
 import { getListingPageQuery } from "../../lib/categoryPageServer";
 
+export const revalidate = 120;
+
 export default async function Page({ searchParams }) {
   const { offset, page } = await getListingPageQuery(searchParams);
   const result = await fetchCategoryListingByVertical("goalkeeperGloves", {
@@ -23,6 +25,7 @@ export default async function Page({ searchParams }) {
 
   const { brands, attributeValues } = await fetchCategoryAttributeFacets({
     categoryId: result.category.id,
+    maxPages: 1,
   });
 
   return (

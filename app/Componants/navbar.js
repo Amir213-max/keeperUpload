@@ -4,10 +4,9 @@ import { FaSearch, FaShoppingCart, FaUser, FaBars } from 'react-icons/fa';
 import { useState , useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import dynamic from 'next/dynamic';
+import { usePathname, useRouter } from 'next/navigation';
 import { Globe, ChevronDown } from 'lucide-react';
-import CartSidebar from './CartSidebar';
-import SearchComponent from './SearchComponant';
 import Sidebar from './sidebar';
 import NavbarNotifications from './NotificationsBell';
 import { useAuth } from '../contexts/AuthContext'; // ✅ استدعاء الـ AuthContext
@@ -18,9 +17,13 @@ import { useCart } from '../contexts/CartContext';
 import { clearTranslationCache } from '../lib/translationService';
 import { usePublicNavSettings } from '../contexts/PublicNavSettingsContext';
 
+const CartSidebar = dynamic(() => import('./CartSidebar'), { ssr: false });
+const SearchComponent = dynamic(() => import('./SearchComponant'), { ssr: false });
+
 export default function NavbarWithLinks() {
   const { t, lang, setLang } = useTranslation();
   const pathname = usePathname();
+  const router = useRouter();
   const [cartOpen, setCartOpen] = useState(false);
   const { getCartItemCount } = useCart();
   const cartItemCount = getCartItemCount();
@@ -55,6 +58,18 @@ export default function NavbarWithLinks() {
 
     fetchBlocks();
   }, []);
+
+  useEffect(() => {
+    const topRoutes = [
+      "/GoalkeeperGloves",
+      "/FootballBoots",
+      "/Goalkeeperapparel",
+      "/Goalkeeperequipment",
+      "/Teamsport",
+      "/Sale",
+    ];
+    topRoutes.forEach((route) => router.prefetch(route));
+  }, [router]);
 
   // ✅ فتح الـ CartSidebar عند إضافة منتج
   useEffect(() => {
@@ -217,7 +232,7 @@ export default function NavbarWithLinks() {
 
               {/* Dropdown Menu */}
               {langDropdownOpen && (
-                <div className="absolute top-full right-0 mt-1 bg-black border border-gray-600 rounded shadow-lg z-50 min-w-[120px]">
+                <div className="absolute top-full left-0 sm:left-auto sm:right-0 mt-1 bg-black border border-gray-600 rounded shadow-lg z-50 min-w-[120px] max-w-[calc(100vw-1rem)]">
                   <button
                     onClick={() => {
                       if (lang !== 'ar') {

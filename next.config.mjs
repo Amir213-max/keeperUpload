@@ -15,6 +15,18 @@ const nextConfig = {
           port: '',
           pathname: '/**',
         },
+        {
+          protocol: 'https',
+          hostname: 'keepersport.store',
+          port: '',
+          pathname: '/**',
+        },
+        {
+          protocol: 'https',
+          hostname: 'www.keepersport.sa',
+          port: '',
+          pathname: '/**',
+        },
       ],
       formats: ['image/avif', 'image/webp'],
       // Optimized for mobile-first: smaller sizes prioritized

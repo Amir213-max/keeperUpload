@@ -9,6 +9,8 @@ import {
 } from "../lib/fetchCategoryListing";
 import { getListingPageQuery } from "../lib/categoryPageServer";
 
+export const revalidate = 120;
+
 const fetchProductsByCategory = async (searchParams) => {
   const { offset, page } = await getListingPageQuery(searchParams);
   const result = await fetchCategoryListingByVertical("teamsport", {
@@ -35,7 +37,10 @@ export default async function Page({ searchParams }) {
   const { products, rootCategory, hasMore, categoryId, pageSize, page } =
     await fetchProductsByCategory(searchParams);
 
-  const { brands, attributeValues } = await fetchCategoryAttributeFacets({ categoryId });
+  const { brands, attributeValues } = await fetchCategoryAttributeFacets({
+    categoryId,
+    maxPages: 1,
+  });
 
   return (
     <Suspense fallback={<Loader />}>

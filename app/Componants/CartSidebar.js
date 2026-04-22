@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
@@ -8,6 +9,7 @@ import { removeItemFromCart } from "../lib/mutations";
 
 import { ShoppingCart, Loader2 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import PriceDisplay from "../components/PriceDisplay";
 import DynamicText from "../components/DynamicText";
 import { useCurrency } from "../contexts/CurrencyContext";
@@ -17,7 +19,11 @@ import { RECOMMENDED_PRODUCTS_QUERY } from "../lib/queries";
 import ProductAttributesModal from "./ProductAttributesModal";
 import { getVariantQuantityCap } from "../lib/variantMatch";
 
+const RECOMMENDATIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+const recommendationsCache = new Map();
+
 export default function CartSidebar({ isOpen, onClose }) {
+  const router = useRouter();
   const { cart, loading, loadCart, removeItem, updateQuantity } = useCart();
   const { t } = useTranslation();
   const [removing, setRemoving] = useState(null);
@@ -49,9 +55,15 @@ export default function CartSidebar({ isOpen, onClose }) {
         const results = await Promise.all(
           productIds.map(async (productId) => {
             try {
+              const cached = recommendationsCache.get(productId);
+              if (cached && Date.now() - cached.ts < RECOMMENDATIONS_CACHE_TTL_MS) {
+                return cached.data;
+              }
               // Use API route proxy to avoid CORS issues
               const data = await graphqlRequest(RECOMMENDED_PRODUCTS_QUERY, { productId });
-              return data?.productsWithCategoryRecommendations?.recommended_products || [];
+              const list = data?.productsWithCategoryRecommendations?.recommended_products || [];
+              recommendationsCache.set(productId, { ts: Date.now(), data: list });
+              return list;
             } catch (err) {
               console.error("⚠️ Error fetching recommendations for:", productId, err);
               return [];
@@ -170,7 +182,15 @@ export default function CartSidebar({ isOpen, onClose }) {
                 return (
                   <motion.div key={uniqueKey} layout transition={{ duration: 0.25, ease: "easeInOut" }} className="flex items-center justify-between bg-white shadow-sm p-3 hover:shadow-md transition">
                     <div className="flex items-center space-x-3">
-                      <img src={imgSrc} alt={product.name || "Product"} className="w-16 h-16 object-contain border" />
+                      <Image
+                        src={imgSrc}
+                        alt={product.name || "Product"}
+                        width={64}
+                        height={64}
+                        sizes="64px"
+                        className="w-16 h-16 object-contain border"
+                        unoptimized={/^https?:\/\//i.test(imgSrc)}
+                      />
                       <div>
                         <p className="font-semibold text-gray-800">
                           <DynamicText>{product.name || item.name || "Product"}</DynamicText>
@@ -258,7 +278,15 @@ export default function CartSidebar({ isOpen, onClose }) {
                     return (
                       <motion.div key={uniqueKey} whileHover={{ scale: 1.03 }} className="bg-white shadow-sm hover:shadow-md transition flex flex-col justify-between">
                         <Link href={`/product/${prod.sku}`} className="block p-2">
-                          <img src={prod.images?.[0] || "/no-img.png"} alt={prod.name} className="w-full h-24 object-contain mb-1" />
+                          <Image
+                            src={prod.images?.[0] || "/no-img.png"}
+                            alt={prod.name}
+                            width={96}
+                            height={96}
+                            sizes="96px"
+                            className="w-full h-24 object-contain mb-1"
+                            unoptimized={/^https?:\/\//i.test(prod.images?.[0] || "")}
+                          />
                           <p className="text-sm font-semibold text-gray-800 line-clamp-1">
                             <DynamicText>{prod.name || ''}</DynamicText>
                           </p>
@@ -296,7 +324,7 @@ export default function CartSidebar({ isOpen, onClose }) {
       {/* Footer */}
       <div className="sticky bottom-0 left-0 right-0 bg-white border-t shadow-md p-4">
         {cart?.lineItems?.length > 0 && (
-          <button onClick={() => (window.location.href = "/checkout_1")} className="w-full bg-black cursor-pointer text-white py-3 font-semibold hover:bg-gray-800 transition">
+          <button onClick={() => router.push("/checkout_1")} className="w-full bg-black cursor-pointer text-white py-3 font-semibold hover:bg-gray-800 transition">
             {t("Checkout →")}
           </button>
         )}

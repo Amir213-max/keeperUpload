@@ -5,6 +5,7 @@ import { addToCartTempUser } from "@/app/lib/mutations";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ShoppingCart } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useTranslation } from "@/app/contexts/TranslationContext";
 import { useCurrency } from "@/app/contexts/CurrencyContext";
 import { useCart } from "@/app/contexts/CartContext";
@@ -305,10 +306,13 @@ export default function ProductDetailsSidebar({ product }) {
         <div className="flex items-center gap-3">
           <div className="w-2 h-2  rotate-45" />
           <div className="relative w-16 h-8 sm:w-20 sm:h-10 flex items-center justify-center">
-            <img
+            <Image
               src={product.brand_logo_url}
               alt={product.brand_name}
+              fill
+              sizes="80px"
               className="w-full h-full object-contain"
+              unoptimized={/^https?:\/\//i.test(product.brand_logo_url || "")}
             />
           </div>
           <span className="text-sm font-semibold text-gray-700 uppercase">

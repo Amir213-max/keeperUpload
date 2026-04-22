@@ -155,20 +155,6 @@ export default function ProductsPageLayout({
     setSelectedCategoryName(cat?.name || null);
   }, [selectedCategoryId, categoriesForSidebar]);
 
-  // 🔹 تحديث الـ URL عند تغيير الفلاتر
-  useEffect(() => {
-    const params = new URLSearchParams();
-
-    if (selectedBrand) params.set("brand", selectedBrand);
-    if (selectedCategoryId) params.set("category", selectedCategoryId);
-
-    Object.entries(selectedAttributes).forEach(([attr, values]) => {
-      if (values.length) params.set(`attr_${attr}`, values.join(","));
-    });
-
-    router.replace(`?${params.toString()}`, { scroll: false });
-  }, [selectedBrand, selectedCategoryId, selectedAttributes, router]);
-
   const indexOfLast = currentPage * productsPerPage;
   const indexOfFirst = indexOfLast - productsPerPage;
   const currentProducts = filteredProducts.slice(indexOfFirst, indexOfLast);

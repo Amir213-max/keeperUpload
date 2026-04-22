@@ -16,10 +16,12 @@ import { Splide, SplideSlide } from "@splidejs/react-splide";
 import "@splidejs/react-splide/css";
 import { useTranslation } from "../contexts/TranslationContext";
 import { motion } from "framer-motion";
-import MultiSlider_6 from "./Slider_6";
+import dynamic from "next/dynamic";
 import Loader from "./Loader";
 import DynamicText from "../components/DynamicText";
 import BlogImageWithLoader from "../components/BlogImageWithLoader";
+
+const MultiSlider_6 = dynamic(() => import("./Slider_6"), { ssr: false });
 
 const BRAND_CATEGORY_FETCH_LIMIT = 80;
 /** Category-only fetch window when CMS sends brand as slug (no server-side brand filter). */
@@ -643,8 +645,6 @@ export default function HomePageBlocks() {
           </motion.div>
         );
       })}
-      <MultiSlider_6 />
-
       {/* 🔹 Blogs Section — compact; >4 items → horizontal strip like multi-banners */}
       {blogs.length > 0 && (
         <motion.div
@@ -785,6 +785,8 @@ export default function HomePageBlocks() {
           )}
         </motion.div>
       )}
+
+      <MultiSlider_6 />
     </div>
   );
 }

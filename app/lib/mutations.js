@@ -390,6 +390,9 @@ const CART_PRODUCT_FOR_STOCK = gql`
   }
 `;
 
+const CART_PRODUCT_STOCK_CACHE_TTL_MS = 2 * 60 * 1000;
+const cartProductStockCache = new Map();
+
 async function enrichCartLineItemsWithVariantStock(cart) {
   if (!cart?.lineItems?.length) return cart;
   const productIds = [
@@ -405,11 +408,22 @@ async function enrichCartLineItemsWithVariantStock(cart) {
   await Promise.all(
     productIds.map(async (pid) => {
       try {
+        const cached = cartProductStockCache.get(String(pid));
+        if (cached && Date.now() - cached.ts < CART_PRODUCT_STOCK_CACHE_TTL_MS) {
+          if (cached.data?.id) {
+            productById[String(cached.data.id)] = cached.data;
+          }
+          return;
+        }
         const data = await graphqlClient.request(CART_PRODUCT_FOR_STOCK, {
           id: String(pid),
         });
         if (data?.product?.id) {
           productById[String(data.product.id)] = data.product;
+          cartProductStockCache.set(String(data.product.id), {
+            ts: Date.now(),
+            data: data.product,
+          });
         }
       } catch (e) {
         console.warn("[enrichCart] product fetch failed", pid, e?.message || e);

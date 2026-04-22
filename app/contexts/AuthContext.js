@@ -1,11 +1,13 @@
 "use client";
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { setAuthToken } from "../lib/graphqlClient";
 import { getDynamicUserId } from "../lib/mutations";
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
+  const router = useRouter();
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
 
@@ -52,10 +54,8 @@ export function AuthProvider({ children }) {
     getDynamicUserId();
 
     // optional: redirect للهوم
-    if (typeof window !== "undefined") {
-      window.location.href = "/";
-    }
-  }, []);
+    router.replace("/");
+  }, [router]);
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout, updateUser }}>

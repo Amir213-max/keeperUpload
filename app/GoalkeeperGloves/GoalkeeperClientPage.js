@@ -218,7 +218,7 @@ export default function GoalKeeperClientPage({
     // فقط عند action من المستخدم (فلترة أو تغيير صفحة)
     setImagesLoading(true);
     setImageProgress(0);
-    setShowProducts(false); // إخفاء المنتجات عند الفلترة
+    setShowProducts(true); // إبقاء المنتجات ظاهرة لتقليل الإحساس ببطء التنقل
     loadedImagesRef.current.clear();
   }, [selectedBrand, selectedAttributes, selectedCategoryId, serverPage]);
 
@@ -301,12 +301,12 @@ export default function GoalKeeperClientPage({
       loadedImagesRef.current.clear();
       isInitialLoadRef.current = false;
       
-      // ✅ Fallback: إذا لم تحمل الصور خلال 3 ثوان، اعرض المنتجات
+      // ✅ Fallback سريع: إذا تأخر التحميل، اعرض المنتجات بسرعة
       const fallbackTimeout = setTimeout(() => {
         setImagesLoading(false);
         setImageProgress(0);
         setShowProducts(true);
-      }, 3000);
+      }, 1200);
       
       return () => clearTimeout(fallbackTimeout);
     } else if (totalImages === 0 && isInitialLoadRef.current) {
@@ -326,7 +326,7 @@ export default function GoalKeeperClientPage({
         setImagesLoading(false);
         setImageProgress(0);
         setShowProducts(true);
-      }, 3000);
+      }, 1200);
       return () => clearTimeout(fallbackTimeout);
     }
   }, [currentProducts]);

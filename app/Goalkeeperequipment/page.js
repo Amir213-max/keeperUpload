@@ -9,6 +9,8 @@ import {
 } from "../lib/fetchCategoryListing";
 import { getListingPageQuery } from "../lib/categoryPageServer";
 
+export const revalidate = 120;
+
 async function load(searchParams) {
   const { offset, page } = await getListingPageQuery(searchParams);
   const result = await fetchCategoryListingByVertical("goalkeeperEquipment", {
@@ -34,7 +36,10 @@ async function load(searchParams) {
 export default async function Page({ searchParams }) {
   const { products, rootCategory, hasMore, categoryId, pageSize, page } = await load(searchParams);
 
-  const { brands, attributeValues } = await fetchCategoryAttributeFacets({ categoryId });
+  const { brands, attributeValues } = await fetchCategoryAttributeFacets({
+    categoryId,
+    maxPages: 1,
+  });
 
   return (
     <Suspense fallback={<Loader />}>

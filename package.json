@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:profile": "next build --profile",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test tests/*.mjs"
+    "test": "node --test tests/*.mjs",
+    "perf:baseline": "node scripts/perf-baseline.mjs"
   },
   "dependencies": {
     "@apollo/client": "^3.13.8",
