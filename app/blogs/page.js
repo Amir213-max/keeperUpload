@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { graphqlClient } from "../lib/graphqlClient";
 import { GET_BLOGS_QUERY } from "../lib/queries";
-import Image from "next/image";
 import Link from "next/link";
 import Loader from "../Componants/Loader";
 import { motion } from "framer-motion";
 import { useTranslation } from "../contexts/TranslationContext";
 import DynamicText from "../components/DynamicText";
+import BlogImageWithLoader from "../components/BlogImageWithLoader";
 
 const BASE_URL = "https://keepersport.store/storage/";
 
@@ -91,12 +91,11 @@ export default function BlogsPage() {
                   <div className="bg-[#1a1a1a] hover:bg-[#2a2a2a] rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 h-full flex flex-col">
                     <div className="relative w-full aspect-[16/9] overflow-hidden">
                       {imageUrl ? (
-                        <Image
+                        <BlogImageWithLoader
                           src={imageUrl}
                           alt={blog.title || "Blog Image"}
-                          fill
-                          className="object-cover group-hover:scale-110 transition-transform duration-500"
-                          unoptimized
+                          className="object-cover group-hover:scale-110"
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                         />
                       ) : (
                         <div className="w-full h-full bg-gray-800 flex items-center justify-center">

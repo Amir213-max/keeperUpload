@@ -414,6 +414,19 @@ setShippingCosts({
     return errorMessage;
   };
 
+  const isOfferIdColumnBackendError = (error) => {
+    const graphqlError = error?.response?.errors?.[0];
+    const debugMessage = graphqlError?.extensions?.debugMessage || "";
+    const message = graphqlError?.message || error?.message || "";
+    const combined = `${debugMessage} ${message}`.toLowerCase();
+    return (
+      combined.includes("unknown column 'offer_id'") ||
+      combined.includes("unknown column `offer_id`") ||
+      combined.includes("column not found") ||
+      combined.includes("offer_id")
+    );
+  };
+
   // تطبيق كود الخصم على الطلب
   const applyCoupon = async () => {
     const trimmedCode = couponCode.trim();
@@ -473,27 +486,43 @@ setShippingCosts({
       }
 
       if (!targetOrderId) {
-        const createOrderResponse = await graphqlClient.request(
-          gql`
-            mutation CreateOrderFromCart($cart_id: ID!, $input: CreateOrderFromCartInput!) {
-              createOrderFromCart(cart_id: $cart_id, input: $input) {
-                id
-                number
-                total_amount
+        try {
+          const createOrderResponse = await graphqlClient.request(
+            gql`
+              mutation CreateOrderFromCart($cart_id: ID!, $input: CreateOrderFromCartInput!) {
+                createOrderFromCart(cart_id: $cart_id, input: $input) {
+                  id
+                  number
+                  total_amount
+                }
               }
+            `,
+            {
+              cart_id: cartIdForOrder,
+              input: {
+                payment_status: "PENDING",
+                shipping_type: selectedShipping || "normal",
+                empty_cart: false,
+              },
             }
-          `,
-          {
-            cart_id: cartIdForOrder,
-            input: {
-              payment_status: "PENDING",
-              shipping_type: selectedShipping || "normal",
-              empty_cart: false,
-            },
+          );
+          targetOrderId = createOrderResponse.createOrderFromCart.id;
+          setOrderId(targetOrderId);
+        } catch (createOrderError) {
+          if (isOfferIdColumnBackendError(createOrderError)) {
+            toast.error(
+              t("Discount is temporarily unavailable. Please continue checkout.") ||
+                "كود الخصم غير متاح مؤقتا حاليا، من فضلك كمل الطلب بدون كوبون.",
+              {
+                position: "top-right",
+                duration: 4500,
+                style: { background: "#ef4444", color: "#fff" },
+              }
+            );
+            return;
           }
-        );
-        targetOrderId = createOrderResponse.createOrderFromCart.id;
-        setOrderId(targetOrderId);
+          throw createOrderError;
+        }
       }
 
       const applyResponse = await graphqlClient.request(APPLY_OFFER_CODE_TO_ORDER, {

@@ -225,10 +225,10 @@ export default function ProfilePageClient() {
   const formatDate = (dateString) => {
     if (!dateString) return t("Not available");
     const date = new Date(dateString);
-    return date.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-US", {
+    return date.toLocaleDateString("en-US", {
       year: "numeric",
-      month: "long",
-      day: "numeric",
+      month: "2-digit",
+      day: "2-digit",
     });
   };
 

@@ -51,7 +51,11 @@ export default function OrdersPage() {
                 </h2>
                 <p className="text-sm text-gray-500">
                   Total: ${order.total_amount.toFixed(2)} | Created at:{" "}
-                  {new Date(order.created_at).toLocaleDateString()}
+                  {new Date(order.created_at).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                  })}
                 </p>
               </div>
               <button className="text-blue-500 font-medium">

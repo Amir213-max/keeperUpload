@@ -17,7 +17,6 @@ import { useCategory } from '../contexts/CategoryContext';
 import { useCart } from '../contexts/CartContext';
 import { clearTranslationCache } from '../lib/translationService';
 import { usePublicNavSettings } from '../contexts/PublicNavSettingsContext';
-import { SITE_LOGO_FALLBACK_URL } from '../lib/siteLogoFromSettings';
 
 export default function NavbarWithLinks() {
   const { t, lang, setLang } = useTranslation();
@@ -152,16 +151,18 @@ export default function NavbarWithLinks() {
               href="/"
               className="relative block w-[110px] h-[36px] sm:w-[140px] sm:h-[44px] md:w-[190px] md:h-[56px] max-w-[190px] max-h-[56px]"
             >
-              <Image
-                key={siteLogoUrl || "fallback"}
-                src={siteLogoUrl || SITE_LOGO_FALLBACK_URL}
-                alt="Logo"
-                fill
-                sizes="(max-width: 640px) 110px, (max-width: 768px) 140px, 190px"
-                className="object-contain"
-                priority
-                unoptimized={Boolean(siteLogoUrl && /^https?:\/\//i.test(siteLogoUrl))}
-              />
+              {siteLogoUrl ? (
+                <Image
+                  key={siteLogoUrl}
+                  src={siteLogoUrl}
+                  alt="Logo"
+                  fill
+                  sizes="(max-width: 640px) 110px, (max-width: 768px) 140px, 190px"
+                  className="object-contain"
+                  priority
+                  unoptimized={/^https?:\/\//i.test(siteLogoUrl)}
+                />
+              ) : null}
             </Link>
           </div>
 

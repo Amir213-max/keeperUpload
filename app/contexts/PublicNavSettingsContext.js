@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { graphqlRequest } from "../lib/graphqlClientHelper";
 import { PUBLIC_SETTINGS_NAV_QUERY } from "../lib/queries";
-import { getSiteLogoUrlOrFallback } from "../lib/siteLogoFromSettings";
+import { pickSiteLogoUrl } from "../lib/siteLogoFromSettings";
 
 const PublicNavSettingsContext = createContext({
   siteLogoUrl: null,
@@ -25,7 +25,7 @@ export function PublicNavSettingsProvider({ children }) {
         const all = data?.publicSettings || [];
         const offers = all.find((s) => s.group && String(s.group).toLowerCase() === "offers_label");
         if (offers) setOffersLabel(offers);
-        setSiteLogoUrl(getSiteLogoUrlOrFallback(all));
+        setSiteLogoUrl(pickSiteLogoUrl(all));
       } catch (e) {
         console.error("PublicNavSettings: failed to load publicSettings", e);
       } finally {

@@ -19,6 +19,7 @@ import { motion } from "framer-motion";
 import MultiSlider_6 from "./Slider_6";
 import Loader from "./Loader";
 import DynamicText from "../components/DynamicText";
+import BlogImageWithLoader from "../components/BlogImageWithLoader";
 
 const BRAND_CATEGORY_FETCH_LIMIT = 80;
 /** Category-only fetch window when CMS sends brand as slug (no server-side brand filter). */
@@ -678,13 +679,11 @@ export default function HomePageBlocks() {
                         <div className="bg-[#1a1a1a] hover:bg-[#2a2a2a] overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 h-full flex flex-col border border-gray-800/80">
                           <div className="relative w-full aspect-[5/3] overflow-hidden">
                             {imageUrl ? (
-                              <Image
+                              <BlogImageWithLoader
                                 src={imageUrl}
                                 alt={blog.title || "Blog Image"}
-                                fill
-                                className="object-cover group-hover:scale-105 transition-transform duration-300"
+                                className="object-cover group-hover:scale-105"
                                 sizes="260px"
-                                unoptimized
                               />
                             ) : (
                               <div className="w-full h-full min-h-[120px] bg-gray-800 flex items-center justify-center">
@@ -740,13 +739,11 @@ export default function HomePageBlocks() {
                         <div className="bg-[#1a1a1a] hover:bg-[#2a2a2a] overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 h-full flex flex-col border border-gray-800/80">
                           <div className="relative w-full aspect-[5/3] overflow-hidden">
                             {imageUrl ? (
-                              <Image
+                              <BlogImageWithLoader
                                 src={imageUrl}
                                 alt={blog.title || "Blog Image"}
-                                fill
-                                className="object-cover group-hover:scale-105 transition-transform duration-300"
+                                className="object-cover group-hover:scale-105"
                                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                                unoptimized
                               />
                             ) : (
                               <div className="w-full h-full min-h-[100px] bg-gray-800 flex items-center justify-center">

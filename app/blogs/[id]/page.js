@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { graphqlClient } from "@/app/lib/graphqlClient";
 import { GET_BLOG_BY_ID } from "@/app/lib/queries";
 import Loader from "@/app/Componants/Loader";
 import DynamicText from "@/app/components/DynamicText";
 import { useTranslation } from "@/app/contexts/TranslationContext";
 import { ArrowRight, ArrowLeft } from "lucide-react";
+import BlogImageWithLoader from "@/app/components/BlogImageWithLoader";
 
 const BASE_URL = "https://keepersport.store/storage/";
 
@@ -111,14 +111,12 @@ export default function BlogDetailPage() {
 
         {imageUrl ? (
           <div className="relative w-full aspect-[21/9] max-h-[420px] min-h-[160px] overflow-hidden rounded-xl bg-neutral-900 mb-8">
-            <Image
+            <BlogImageWithLoader
               src={imageUrl}
               alt={blog.title || ""}
-              fill
               className="object-cover object-center"
               sizes="(max-width: 768px) 100vw, 896px"
               priority
-              unoptimized
             />
           </div>
         ) : null}
