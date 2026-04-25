@@ -1,9 +1,15 @@
 import { performance } from "node:perf_hooks";
 
 const BASE_URL = process.env.PERF_BASE_URL || "http://localhost:3000";
+const RUNS = Number(process.env.PERF_RUNS || 3);
 const TARGETS = [
   "/",
   "/GoalkeeperGloves",
+  "/GoalkeeperGloves?page=2",
+  "/FootballBoots",
+  "/FootballBoots?page=2",
+  "/Teamsport",
+  "/Sale",
   "/checkout_1",
   "/product/gk2hs",
 ];
@@ -32,18 +38,42 @@ async function measurePath(path) {
 }
 
 async function run() {
-  console.log(`Perf baseline against ${BASE_URL}`);
+  console.log(`Perf baseline against ${BASE_URL} (runs per route: ${RUNS})`);
   const rows = [];
   for (const path of TARGETS) {
     try {
-      rows.push(await measurePath(path));
+      const samples = [];
+      for (let i = 0; i < RUNS; i += 1) {
+        samples.push(await measurePath(path));
+      }
+      const ttfbValues = samples.map((r) => r.ttfb_ms).sort((a, b) => a - b);
+      const totalValues = samples.map((r) => r.total_ms).sort((a, b) => a - b);
+      const p95Index = Math.min(totalValues.length - 1, Math.ceil(totalValues.length * 0.95) - 1);
+      rows.push({
+        path,
+        status: samples[0].status,
+        runs: RUNS,
+        ttfb_avg_ms: Number((ttfbValues.reduce((a, b) => a + b, 0) / ttfbValues.length).toFixed(1)),
+        total_avg_ms: Number((totalValues.reduce((a, b) => a + b, 0) / totalValues.length).toFixed(1)),
+        total_best_ms: totalValues[0],
+        total_p95_ms: totalValues[p95Index],
+        total_worst_ms: totalValues[totalValues.length - 1],
+        html_read_avg_ms: Number(
+          (samples.reduce((acc, item) => acc + item.html_read_ms, 0) / samples.length).toFixed(1)
+        ),
+        bytes: samples[0].bytes,
+      });
     } catch (error) {
       rows.push({
         path,
         status: "ERR",
-        ttfb_ms: null,
-        total_ms: null,
-        html_read_ms: null,
+        runs: RUNS,
+        ttfb_avg_ms: null,
+        total_avg_ms: null,
+        total_best_ms: null,
+        total_p95_ms: null,
+        total_worst_ms: null,
+        html_read_avg_ms: null,
         bytes: null,
         error: String(error?.message || error),
       });

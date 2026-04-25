@@ -198,7 +198,7 @@ export default function ProductSlider({ images, productName, onImageLoad }) {
         modules={[Navigation]}
         spaceBetween={0}
         slidesPerView={1}
-        loop={imageUrls.length > 1}
+        loop={false}
         dir={direction}
         className="product-swiper h-full w-full"
         allowTouchMove
@@ -231,9 +231,9 @@ export default function ProductSlider({ images, productName, onImageLoad }) {
                       done ? "scale-100 opacity-100" : "scale-[0.98] opacity-0"
                     }`}
                     draggable={false}
-                    loading={index === 0 ? "eager" : "lazy"}
-                    priority={index === 0}
-                    fetchPriority={index === 0 ? "high" : "auto"}
+                    loading="lazy"
+                    priority={false}
+                    fetchPriority="auto"
                     quality={index === 0 ? 82 : 72}
                     sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
                     placeholder="empty"

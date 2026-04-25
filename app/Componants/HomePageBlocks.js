@@ -124,34 +124,36 @@ export default function HomePageBlocks() {
 
         /** @type {Map<string, ReturnType<typeof mapProductToHomeSelected>[]>} */
         const productsByDedupeKey = new Map();
-        for (const [dedupeKey, g] of dedupeGroups) {
-          try {
-            const filters = g.numericBrand
-              ? buildProductFilters({
-                  categoryId: g.categoryId,
-                  brandId: g.brandKey,
-                })
-              : buildProductFilters({ categoryId: g.categoryId });
-            const fw = await graphqlRequest(HOME_BRAND_CATEGORY_WITH_FILTERS_QUERY, {
-              filters,
-              limit: g.numericBrand
-                ? BRAND_CATEGORY_FETCH_LIMIT
-                : BRAND_SLUG_CATEGORY_FETCH_LIMIT,
-              offset: 0,
-            });
-            let list = fw?.productsWithFilters || [];
-            if (!g.numericBrand) {
-              list = list.filter((p) => productMatchesHomeBrand(p, g.brandKey));
+        await Promise.all(
+          [...dedupeGroups.entries()].map(async ([dedupeKey, g]) => {
+            try {
+              const filters = g.numericBrand
+                ? buildProductFilters({
+                    categoryId: g.categoryId,
+                    brandId: g.brandKey,
+                  })
+                : buildProductFilters({ categoryId: g.categoryId });
+              const fw = await graphqlRequest(HOME_BRAND_CATEGORY_WITH_FILTERS_QUERY, {
+                filters,
+                limit: g.numericBrand
+                  ? BRAND_CATEGORY_FETCH_LIMIT
+                  : BRAND_SLUG_CATEGORY_FETCH_LIMIT,
+                offset: 0,
+              });
+              let list = fw?.productsWithFilters || [];
+              if (!g.numericBrand) {
+                list = list.filter((p) => productMatchesHomeBrand(p, g.brandKey));
+              }
+              const products = sortProductsNewestFirst(list)
+                .slice(0, 15)
+                .map(mapProductToHomeSelected);
+              productsByDedupeKey.set(dedupeKey, products);
+            } catch (err) {
+              console.error("❌ Error fetching brand_category_products:", err);
+              productsByDedupeKey.set(dedupeKey, []);
             }
-            const products = sortProductsNewestFirst(list)
-              .slice(0, 15)
-              .map(mapProductToHomeSelected);
-            productsByDedupeKey.set(dedupeKey, products);
-          } catch (err) {
-            console.error("❌ Error fetching brand_category_products:", err);
-            productsByDedupeKey.set(dedupeKey, []);
-          }
-        }
+          })
+        );
 
         const categoryProductCategoryIds = new Set();
         activeBlocks.forEach((block) => {
@@ -164,24 +166,26 @@ export default function HomePageBlocks() {
 
         /** @type {Map<string, ReturnType<typeof mapProductToHomeSelected>[]>} */
         const categoryProductsByCategoryId = new Map();
-        for (const cat of categoryProductCategoryIds) {
-          try {
-            const filters = buildProductFilters({ categoryId: cat });
-            const fw = await graphqlRequest(HOME_BRAND_CATEGORY_WITH_FILTERS_QUERY, {
-              filters,
-              limit: BRAND_CATEGORY_FETCH_LIMIT,
-              offset: 0,
-            });
-            const list = fw?.productsWithFilters || [];
-            const products = sortProductsNewestFirst(list)
-              .slice(0, 15)
-              .map(mapProductToHomeSelected);
-            categoryProductsByCategoryId.set(cat, products);
-          } catch (err) {
-            console.error("❌ Error fetching category_products:", err);
-            categoryProductsByCategoryId.set(cat, []);
-          }
-        }
+        await Promise.all(
+          [...categoryProductCategoryIds].map(async (cat) => {
+            try {
+              const filters = buildProductFilters({ categoryId: cat });
+              const fw = await graphqlRequest(HOME_BRAND_CATEGORY_WITH_FILTERS_QUERY, {
+                filters,
+                limit: BRAND_CATEGORY_FETCH_LIMIT,
+                offset: 0,
+              });
+              const list = fw?.productsWithFilters || [];
+              const products = sortProductsNewestFirst(list)
+                .slice(0, 15)
+                .map(mapProductToHomeSelected);
+              categoryProductsByCategoryId.set(cat, products);
+            } catch (err) {
+              console.error("❌ Error fetching category_products:", err);
+              categoryProductsByCategoryId.set(cat, []);
+            }
+          })
+        );
 
         activeBlocks = activeBlocks.map((block) => {
           if (block.type === "brand_category_products") {

@@ -69,7 +69,7 @@ export default function ImageGallery({
                   height={120}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   style={{ maxWidth: '90%', maxHeight: '90%', margin: 'auto' }}
-                  loading={index < 3 ? "eager" : "lazy"}
+                  loading={index === 0 ? "eager" : "lazy"}
                   quality={75}
                   sizes="(max-width: 768px) 20vw, 120px"
                   placeholder="empty"
@@ -127,7 +127,7 @@ export default function ImageGallery({
                 height={120}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 style={{ maxWidth: '85%', maxHeight: '85%', margin: 'auto' }}
-                loading={index < 3 ? "eager" : "lazy"}
+                loading={index === 0 ? "eager" : "lazy"}
                 quality={75}
                 sizes="(max-width: 640px) 20vw, 120px"
                 placeholder="empty"

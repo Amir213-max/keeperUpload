@@ -9,7 +9,7 @@ import { Splide, SplideSlide } from '@splidejs/react-splide';
 import '@splidejs/react-splide/css';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RECOMMENDED_PRODUCTS_QUERY } from '@/app/lib/queries';
 
@@ -19,9 +19,26 @@ export default function RecommendedSlider({ productId }) {
   const [products, setProducts] = useState([]);
   const [recentProducts, setRecentProducts] = useState([]);
   const [activeTab, setActiveTab] = useState('recommended');
+  const containerRef = useRef(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (!containerRef.current || isVisible) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsVisible(true);
+        }
+      },
+      { rootMargin: "200px 0px" }
+    );
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [isVisible]);
 
   // ✅ Fetch recommended products
   useEffect(() => {
+    if (!isVisible) return;
     const fetchRecommended = async () => {
       try {
         const data = await graphqlClient.request(RECOMMENDED_PRODUCTS_QUERY, {
@@ -35,7 +52,7 @@ export default function RecommendedSlider({ productId }) {
       }
     };
     if (productId) fetchRecommended();
-  }, [productId]);
+  }, [productId, isVisible]);
 
   // ✅ Load recently viewed
   useEffect(() => {
@@ -74,7 +91,7 @@ export default function RecommendedSlider({ productId }) {
   if (!products.length && !recentProducts.length) return null;
 
   return (
-    <div className="w-full max-w-9xl mx-auto px-4 space-y-6 py-10">
+    <div ref={containerRef} className="w-full max-w-9xl mx-auto px-4 space-y-6 py-10">
       {/* Tabs */}
       <div className="flex gap-6 border-b border-gray-200 mb-4">
         <button

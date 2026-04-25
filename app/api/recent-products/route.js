@@ -1,40 +1,52 @@
 
-import { gql } from 'graphql-request';
 import { graphqlClient } from '@/app/lib/graphqlClient';
 
-const PRODUCT_BY_SKU_QUERY = gql`
-  query GetProductBySKU($sku: ID!) {
-    product(sku: $sku) {
-      name
-      sku
-      images {
-        url
-      }
-      brand {
+function buildProductsBySkuBatchQuery(skus) {
+  const uniqueSkus = [...new Set((skus || []).filter(Boolean))];
+  if (uniqueSkus.length === 0) return null;
+
+  const variableDefs = uniqueSkus.map((_, idx) => `$sku${idx}: ID!`).join(", ");
+  const productSelections = uniqueSkus
+    .map(
+      (_, idx) => `
+      p${idx}: product(sku: $sku${idx}) {
         name
-      }
-      listPrice {
-        amount
-        currency
-      }
-    }
-  }
-`;
+        sku
+        images {
+          url
+        }
+        brand {
+          name
+        }
+        listPrice {
+          amount
+          currency
+        }
+      }`
+    )
+    .join("\n");
+
+  const query = `query GetProductsBySkuBatch(${variableDefs}) {${productSelections}\n}`;
+  const variables = Object.fromEntries(uniqueSkus.map((sku, idx) => [`sku${idx}`, sku]));
+  return { query, variables, uniqueSkus };
+}
 
 export async function getRecentlySeenProducts(skus) {
   if (!skus?.length) return [];
+  const payload = buildProductsBySkuBatchQuery(skus);
+  if (!payload) return [];
 
-  const productPromises = skus.map(async (sku) => {
-    const variables = { sku };
-    try {
-      const response = await graphqlClient.request(PRODUCT_BY_SKU_QUERY, variables);
-      return response.product;
-    } catch (error) {
-      console.error(`Error fetching product with SKU ${sku}:`, error);
-      return null; // skip if error
+  try {
+    const response = await graphqlClient.request(payload.query, payload.variables);
+    const bySku = new Map();
+    for (let i = 0; i < payload.uniqueSkus.length; i += 1) {
+      const p = response?.[`p${i}`];
+      if (p?.sku) bySku.set(String(p.sku), p);
     }
-  });
-
-  const products = await Promise.all(productPromises);
-  return products.filter(Boolean); // remove nulls
+    // Preserve original order from local recently-seen list.
+    return skus.map((sku) => bySku.get(String(sku))).filter(Boolean);
+  } catch (error) {
+    console.error("Error fetching recent products batch:", error);
+    return [];
+  }
 }

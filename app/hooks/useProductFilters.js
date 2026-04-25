@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useSearchParams, usePathname } from "next/navigation";
 import {
   parsePathSegments,
   parseBrandFromPathSegments,
@@ -11,6 +11,14 @@ import {
   toSlug,
   attributeNameToSlug,
 } from "../lib/urlSlugHelper";
+
+const INITIAL_PARSE_DELAY_MS = 40;
+const NAVIGATION_PARSE_DELAY_MS = 20;
+const INITIAL_URL_UPDATE_LOCK_MS = 200;
+const INITIAL_HYDRATION_COMPLETE_MS = 240;
+const URL_STATE_UNLOCK_MS = 50;
+const USER_CHANGE_RESET_MS = 600;
+const NO_FILTER_RESET_MS = 120;
 
 /**
  * Unified hook for managing product filters and URL synchronization
@@ -41,7 +49,6 @@ export function useProductFilters({
   selectedCategoryId = null,
   disableUrlUpdates = false,
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   
@@ -481,7 +488,7 @@ export function useProductFilters({
         // 🔹 زيادة المدة لمنع التحديث حتى يتم parsing الفلاتر
         setTimeout(() => {
           isUpdatingUrlRef.current = false;
-        }, 2000); // 🔹 منع التحديث لمدة ثانيتين على initial load
+        }, INITIAL_URL_UPDATE_LOCK_MS);
       }
 
       // Mark initial load as complete after first parse
@@ -499,9 +506,9 @@ export function useProductFilters({
         setTimeout(() => {
           isInitialLoadRef.current = false;
           isHydratingFromUrlRef.current = false;
-        }, 2500); // 🔹 تأخير 2.5 ثانية لضمان عدم تحديث URL على initial load
+        }, INITIAL_HYDRATION_COMPLETE_MS);
       }
-    }, isInitial ? 200 : 100); // 🔹 زيادة timeout على initial load لضمان parsing صحيح
+    }, isInitial ? INITIAL_PARSE_DELAY_MS : NAVIGATION_PARSE_DELAY_MS);
 
     return () => clearTimeout(timeoutId);
   }, [
@@ -668,22 +675,21 @@ export function useProductFilters({
           if (hasActiveFilters) {
             // 🔹 إبقاء userInitiatedChangeRef = true عندما يكون هناك فلاتر نشطة
             userInitiatedChangeRef.current = true;
-            // 🔹 إعادة تعيينه إلى false بعد فترة أطول (5 ثواني بدلاً من 2 ثانية)
             setTimeout(() => {
               // فقط إذا لم يكن هناك فلاتر نشطة
               if (!currentBrand && Object.keys(currentAttributes).length === 0 && !selectedCategoryId) {
                 userInitiatedChangeRef.current = false;
               }
-            }, 5000);
+            }, USER_CHANGE_RESET_MS);
           } else {
             setTimeout(() => {
               userInitiatedChangeRef.current = false;
-            }, 500);
+            }, NO_FILTER_RESET_MS);
           }
-        }, 100); // 🔹 timeout 100ms للتوازن بين السرعة والـ deeplinking
+        }, URL_STATE_UNLOCK_MS);
       }
     }
-  }, [disableUrlUpdates, selectedCategorySlug, effectiveBasePath, router, pathname, selectedCategoryId]);
+  }, [disableUrlUpdates, selectedCategorySlug, effectiveBasePath, pathname, selectedCategoryId]);
 
   // Handlers
   const handleBrandChange = useCallback((brand) => {

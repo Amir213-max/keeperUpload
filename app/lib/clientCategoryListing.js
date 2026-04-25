@@ -9,6 +9,35 @@ import { findRootCategoryBySlug } from "./categoryResolve";
 import { promoSliderListingConfig, verticalListingConfig } from "./categoryListingSlugs";
 import { buildProductFilters } from "./productFilters";
 
+const CLIENT_CATEGORIES_CACHE_TTL_MS = 60 * 1000;
+let cachedCategoriesPayload = null;
+let cachedCategoriesPromise = null;
+
+async function getClientRootCategories() {
+  const now = Date.now();
+  if (
+    cachedCategoriesPayload &&
+    now - cachedCategoriesPayload.ts < CLIENT_CATEGORIES_CACHE_TTL_MS &&
+    Array.isArray(cachedCategoriesPayload.rootCategories)
+  ) {
+    return cachedCategoriesPayload.rootCategories;
+  }
+
+  if (!cachedCategoriesPromise) {
+    cachedCategoriesPromise = graphqlRequest(GET_CATEGORIES_ONLY_QUERY)
+      .then((cats) => {
+        const rootCategories = cats.rootCategories || [];
+        cachedCategoriesPayload = { ts: Date.now(), rootCategories };
+        return rootCategories;
+      })
+      .finally(() => {
+        cachedCategoriesPromise = null;
+      });
+  }
+
+  return cachedCategoriesPromise;
+}
+
 /**
  * @param {'glovesCollection'|'studsCollection'|'trainingAids'} sliderKey
  * @param {{ limit?: number }} [opts]
@@ -21,8 +50,7 @@ export async function fetchPromoSliderProducts(sliderKey, opts = {}) {
     return [];
   }
 
-  const cats = await graphqlRequest(GET_CATEGORIES_ONLY_QUERY);
-  const rootCategories = cats.rootCategories || [];
+  const rootCategories = await getClientRootCategories();
   let cat = findRootCategoryBySlug(rootCategories, cfg.slug);
   if (!cat && cfg.legacyRootCategoryIds?.length) {
     const idSet = new Set(cfg.legacyRootCategoryIds.map(String));
@@ -53,8 +81,7 @@ export async function fetchClientProductsByVertical(verticalKey, opts = {}) {
     return [];
   }
 
-  const cats = await graphqlRequest(GET_CATEGORIES_ONLY_QUERY);
-  const rootCategories = cats.rootCategories || [];
+  const rootCategories = await getClientRootCategories();
   let cat = findRootCategoryBySlug(rootCategories, cfg.slug);
   if (!cat && cfg.legacyRootCategoryIds?.length) {
     const idSet = new Set(cfg.legacyRootCategoryIds.map(String));

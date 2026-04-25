@@ -33,7 +33,7 @@ function mergeMaxPagesPerCategory() {
     1,
     Math.min(
       100,
-      Number(process.env.LISTING_SUBTREE_MERGE_MAX_PAGES_PER_CATEGORY || 30) || 30
+      Number(process.env.LISTING_SUBTREE_MERGE_MAX_PAGES_PER_CATEGORY || 8) || 8
     )
   );
 }
