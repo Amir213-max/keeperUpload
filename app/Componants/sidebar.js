@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { FaShoppingCart, FaUser } from 'react-icons/fa';
@@ -22,10 +22,13 @@ import { useAuth } from "../contexts/AuthContext";
 import { usePublicNavSettings } from "../contexts/PublicNavSettingsContext";
 import { SITE_LOGO_FALLBACK_URL } from "../lib/siteLogoFromSettings";
 import { buildParentPageUrl, toSlug } from "../lib/urlSlugHelper";
+import { listingBasePathFromPathname } from "../lib/verticalListingPaths";
 
 const SIDEBAR_NAV_CACHE_KEY = "sidebar_nav_cache_v1";
 const SIDEBAR_BRANDS_CACHE_KEY = "sidebar_gk_brands_cache_v1";
-const SIDEBAR_CACHE_TTL_MS = 15 * 60 * 1000;
+/** Shorter TTL so categories added in the admin/dashboard show up without long waits. */
+const SIDEBAR_CACHE_TTL_MS = 5 * 60 * 1000;
+const SIDEBAR_NAV_REVALIDATE_MS = 45 * 1000;
 
 function readSidebarCache(key) {
   if (typeof window === "undefined") return null;
@@ -136,6 +139,8 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
   const [selectedParentForDetail, setSelectedParentForDetail] = useState(null);
   const [showParentDetail, setShowParentDetail] = useState(false);
   const [goalkeeperGlovesBrands, setGoalkeeperGlovesBrands] = useState([]);
+  /** Bumps when nav cache is cleared so categories refetch after dashboard / long background. */
+  const [navFetchKey, setNavFetchKey] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
   // const { openChat } = useChat();
@@ -143,12 +148,49 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
   const effectiveIsRTL = typeof isRTL === "boolean" ? isRTL : lang === "ar";
   const { user, logout } = useAuth();
 
+  /** Keeps latest drawer setter so delayed closes still run after filter/navigation handlers. */
+  const setIsOpenRef = useRef(setIsOpen);
+  useEffect(() => {
+    setIsOpenRef.current = setIsOpen;
+  }, [setIsOpen]);
+
   // Memoize externalCategories to prevent dependency array changes
   const externalCategoriesMemo = useMemo(() => {
     return externalCategories && Array.isArray(externalCategories) && externalCategories.length > 0 
       ? externalCategories 
       : null;
   }, [externalCategories]);
+
+  useEffect(() => {
+    let hiddenAt = 0;
+    const invalidateNavCache = () => {
+      try {
+        sessionStorage.removeItem(SIDEBAR_NAV_CACHE_KEY);
+      } catch {
+        /* ignore */
+      }
+      setNavFetchKey((k) => k + 1);
+    };
+    const onVisibility = () => {
+      if (typeof document === "undefined") return;
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (document.visibilityState === "visible" && hiddenAt > 0) {
+        const away = Date.now() - hiddenAt;
+        hiddenAt = 0;
+        if (away >= SIDEBAR_NAV_REVALIDATE_MS) invalidateNavCache();
+      }
+    };
+    const onManualRevalidate = () => invalidateNavCache();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("keeper-sidebar-nav-revalidate", onManualRevalidate);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("keeper-sidebar-nav-revalidate", onManualRevalidate);
+    };
+  }, []);
 
   // 🔹 جلب الجذور الرئيسية (mainRootCategories / is_main) ثم fallback لـ rootCategories الكاملة
   useEffect(() => {
@@ -237,7 +279,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
     return () => {
       cancelled = true;
     };
-  }, [externalCategoriesMemo]);
+  }, [externalCategoriesMemo, navFetchKey]);
 
   // 🔹 جلب rootCategories (الرئيسية التي ليس لها parent) - نفس منطق الموبايل
   const rootCategories = categories.filter((cat) => !cat.parent);
@@ -411,26 +453,42 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
     fetchBrands();
   }, []);
 
-  // Keep sidebar prefetch lightweight to avoid competing with active mobile navigation.
+  // Prefetch a few routes when idle so it does not compete with drawer open / taps.
   useEffect(() => {
     if (!isOpen) return;
     const subcategorySlugs = categories
       .filter((c) => c?.slug && c?.parent)
-      .slice(0, 6)
+      .slice(0, 4)
       .map((c) => `/products/${encodeURIComponent(c.slug)}`);
-    subcategorySlugs.forEach((route) => router.prefetch(route));
+    const run = () => {
+      subcategorySlugs.forEach((route) => router.prefetch(route));
+    };
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(run, { timeout: 1500 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = setTimeout(run, 300);
+    return () => clearTimeout(t);
   }, [router, categories, isOpen]);
 
   useEffect(() => {
     if (!showParentDetail || !selectedParentForDetail?.parent?.id) return;
     const parentId = String(selectedParentForDetail.parent.id);
     const showAllRoute = getParentRoute(selectedParentForDetail.parent.name);
-    if (showAllRoute) router.prefetch(showAllRoute);
     const childRoutes = categories
       .filter((c) => c?.parent && String(c.parent.id) === parentId && c?.slug)
-      .slice(0, 8)
+      .slice(0, 5)
       .map((c) => `/products/${encodeURIComponent(c.slug)}`);
-    childRoutes.forEach((route) => router.prefetch(route));
+    const run = () => {
+      if (showAllRoute) router.prefetch(showAllRoute);
+      childRoutes.forEach((route) => router.prefetch(route));
+    };
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(run, { timeout: 1500 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = setTimeout(run, 300);
+    return () => clearTimeout(t);
   }, [showParentDetail, selectedParentForDetail, categories, router]);
 
   const getParentRoute = (name) => getParentRouteFromCategoryName(name);
@@ -438,10 +496,36 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
   const closeAllMobilePanels = useCallback(() => {
     setShowParentDetail(false);
     setSelectedParentForDetail(null);
-    if (typeof setIsOpen === "function") {
-      setIsOpen(false);
+    const close = setIsOpenRef.current;
+    if (typeof close === "function") {
+      close(false);
+      queueMicrotask(() => {
+        close(false);
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => close(false));
+        }
+      });
     }
-  }, [setIsOpen]);
+  }, []);
+
+  /** Parent-detail panel: sync brand with page hook if provided, else navigate on current vertical + ensure drawer closes. */
+  const parentDetailBrandSelect = useCallback(
+    (brandName) => {
+      if (!brandName) return;
+      if (typeof externalOnSelectBrand === "function") {
+        externalOnSelectBrand(brandName);
+        queueMicrotask(() => closeAllMobilePanels());
+        return;
+      }
+      const base = listingBasePathFromPathname(pathname);
+      if (base) {
+        const url = buildParentPageUrl(base, {}, brandName);
+        if (url) router.push(url, { scroll: false });
+      }
+      queueMicrotask(() => closeAllMobilePanels());
+    },
+    [externalOnSelectBrand, closeAllMobilePanels, pathname, router]
+  );
 
   // 🔹 التنقل لصفحة الـ parent (زر "عرض الكل" / جذر بلا فرعيات)
   const handleShowAllClick = (parentId, parentName) => {
@@ -450,23 +534,17 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
     if (route) {
       localStorage.setItem("sidebar_open_parent_id", String(parentId));
       router.push(route, { scroll: false });
-
-      setShowParentDetail(false);
-      setSelectedParentForDetail(null);
-      if (setIsOpen) setIsOpen(false);
+      closeAllMobilePanels();
     } else {
       const parentCategory = categoryById.get(String(parentId));
 
       if (parentCategory?.slug) {
         const slug = encodeURIComponent(parentCategory.slug);
         router.push(`/products/${slug}`, { scroll: false });
-        setShowParentDetail(false);
-        setSelectedParentForDetail(null);
-        if (setIsOpen) setIsOpen(false);
+        closeAllMobilePanels();
       } else {
         console.warn("⚠️ Could not navigate to parent category:", parentId, parentName);
-        setShowParentDetail(false);
-        setSelectedParentForDetail(null);
+        closeAllMobilePanels();
       }
     }
   };
@@ -754,7 +832,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
                           setShowParentDetail(false);
                           setSelectedParentForDetail(null);
                         }}
-                        onSelectBrand={externalOnSelectBrand}
+                        onSelectBrand={parentDetailBrandSelect}
                         isRTL={effectiveIsRTL}
                         lang={lang}
                         t={t}
@@ -824,7 +902,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
 }
 
 // 🔹 مكون ParentDetailView للعرض في وضع الجوال
-function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, onSelectCategory, onCloseAll, onBack, onSelectBrand: externalOnSelectBrand, isRTL, lang, t }) {
+function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, onSelectCategory, onCloseAll, onBack, onSelectBrand, isRTL, lang, t }) {
   if (!selectedParent) return null;
 
   const router = useRouter();
@@ -868,27 +946,21 @@ function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, 
     return normalized.includes('goalkeeper') && normalized.includes('gloves');
   }, [parent?.name]);
 
-  // 🔹 Handler للضغط على براند
-  const handleBrandClick = useCallback((brandName) => {
-    if (!brandName) return;
-
-    if (onCloseAll) onCloseAll();
-
-    // 🔹 إذا كان هناك externalOnSelectBrand (من GoalkeeperGloves)، استخدمه
-    if (externalOnSelectBrand) {
-      externalOnSelectBrand(brandName);
-      queueMicrotask(() => onCloseAll && onCloseAll());
-      return;
-    }
-
-    // بناء URL مع فلتر البراند (للصفحات الأخرى)
-    const brandUrl = buildParentPageUrl("/GoalkeeperGloves", {}, brandName);
-
-    if (brandUrl) {
-      router.push(brandUrl, { scroll: false });
-    }
-    queueMicrotask(() => onCloseAll && onCloseAll());
-  }, [router, onCloseAll, externalOnSelectBrand]);
+  // 🔹 Handler للضغط على براند (إغلاق الستارتين ثم تفويض التنقل/الفلترة للـ parent)
+  const handleBrandClick = useCallback(
+    (brandName) => {
+      if (!brandName) return;
+      onCloseAll?.();
+      if (typeof onSelectBrand === "function") {
+        onSelectBrand(brandName);
+      } else {
+        const brandUrl = buildParentPageUrl("/GoalkeeperGloves", {}, brandName);
+        if (brandUrl) router.push(brandUrl, { scroll: false });
+      }
+      queueMicrotask(() => onCloseAll?.());
+    },
+    [router, onCloseAll, onSelectBrand]
+  );
 
   return (
     <div className="flex flex-col h-full">

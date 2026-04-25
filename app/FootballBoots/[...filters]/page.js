@@ -26,11 +26,13 @@ export default async function Page({ searchParams }) {
   const { brands, attributeValues } = await fetchCategoryAttributeFacets({
     categoryId: result.category.id,
     maxPages: 1,
+    mergeSubCategoryIds: result.mergeSubCategoryIds ?? [],
   });
 
   return (
     <Suspense fallback={<Loader />}>
       <FootballClientPage
+        key={`listing-page-${page}`}
         products={sorted}
         brands={brands}
         attributeValues={attributeValues}

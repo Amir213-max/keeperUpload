@@ -29,23 +29,26 @@ const fetchProductsByCategory = async (searchParams) => {
     rootCategory: result.rootCategory,
     hasMore: result.hasMore,
     categoryId: result.category.id,
+    mergeSubCategoryIds: result.mergeSubCategoryIds ?? [],
     pageSize: DEFAULT_CATEGORY_PAGE_SIZE,
     page,
   };
 };
 
 export default async function Page({ searchParams }) {
-  const { products, rootCategory, hasMore, categoryId, pageSize, page } =
+  const { products, rootCategory, hasMore, categoryId, mergeSubCategoryIds, pageSize, page } =
     await fetchProductsByCategory(searchParams);
 
   const { brands, attributeValues } = await fetchCategoryAttributeFacets({
     categoryId,
     maxPages: 1,
+    mergeSubCategoryIds,
   });
 
   return (
     <Suspense fallback={<Loader />}>
       <GoalKeeperClientPage
+        key={`listing-page-${page}`}
         products={products}
         brands={brands}
         attributeValues={attributeValues}

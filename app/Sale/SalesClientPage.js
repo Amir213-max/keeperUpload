@@ -376,6 +376,7 @@ import { useCategory } from "../contexts/CategoryContext";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import ServerPaginationControls from "../Componants/ServerPaginationControls";
 import { buildPathWithPage } from "../lib/paginationUrl";
+import { parseListingPageFromUrlSearchParams } from "../lib/listingPageParse";
 import { LISTING_PAGE_SIZE } from "../lib/listingConfig";
 
 export default function SalesClientPage({
@@ -396,11 +397,17 @@ export default function SalesClientPage({
   const [selectedAttributes, setSelectedAttributes] = useState({});
   const { selectedCategoryId, setSelectedCategoryId } = useCategory();
   const [selectedCategoryName, setSelectedCategoryName] = useState(null);
-  const serverPage = initialPage;
+  const serverPage = useMemo(() => {
+    if (searchParams.has("page")) {
+      return parseListingPageFromUrlSearchParams(searchParams);
+    }
+    return initialPage;
+  }, [searchParams, initialPage]);
   const productsPerPage = listingPageSize;
   const { loading: currencyLoading } = useCurrency();
   const { t, language } = useTranslation();
   const isRTL = language === "ar";
+  const hasHydratedFromUrlRef = useRef(false);
 
   // 🔹 قراءة الفلاتر من URL عند تحميل الصفحة
   useEffect(() => {
@@ -422,6 +429,7 @@ export default function SalesClientPage({
       }
     }
     setSelectedAttributes(attrs);
+    hasHydratedFromUrlRef.current = true;
   }, [searchParams, setSelectedCategoryId]);
 
   // 🔹 جلب التصنيفات
@@ -459,16 +467,24 @@ export default function SalesClientPage({
     });
   }, [products, selectedBrand, selectedAttributes]);
 
-  const skipFilterPageResetRef = useRef(true);
+  const lastAppliedFilterSignatureRef = useRef(null);
+  const filterSignature = useMemo(
+    () => JSON.stringify({ selectedBrand, selectedAttributes, selectedCategoryId }),
+    [selectedBrand, selectedAttributes, selectedCategoryId]
+  );
   useEffect(() => {
-    if (skipFilterPageResetRef.current) {
-      skipFilterPageResetRef.current = false;
+    if (!hasHydratedFromUrlRef.current) return;
+    if (lastAppliedFilterSignatureRef.current === null) {
+      // Baseline after hydration: do not reset page on initial URL-state sync.
+      lastAppliedFilterSignatureRef.current = filterSignature;
       return;
     }
+    if (lastAppliedFilterSignatureRef.current === filterSignature) return;
+    lastAppliedFilterSignatureRef.current = filterSignature;
     if (serverPage > 1) {
       router.replace(buildPathWithPage(pathname, searchParams, 1));
     }
-  }, [selectedBrand, selectedAttributes, selectedCategoryId, serverPage, pathname, searchParams, router]);
+  }, [filterSignature, serverPage, pathname, searchParams, router]);
 
   const categoriesForSidebar = useMemo(
     () => flattenCategoriesWithParentRefs(categories),
@@ -483,6 +499,7 @@ export default function SalesClientPage({
 
   // 🔹 تحديث الـ URL عند تغيير الفلاتر
   useEffect(() => {
+    if (!hasHydratedFromUrlRef.current) return;
     const params = new URLSearchParams();
 
     if (selectedBrand) params.set("brand", selectedBrand);
@@ -492,13 +509,14 @@ export default function SalesClientPage({
       if (values.length) params.set(`attr_${attr}`, values.join(","));
     });
 
-    router.replace(buildPathWithPage(pathname, params, 1), { scroll: false });
-  }, [selectedBrand, selectedCategoryId, selectedAttributes, pathname, router]);
+    const target = buildPathWithPage(pathname, params, 1);
+    const current = buildPathWithPage(pathname, searchParams, serverPage);
+    if (target !== current) {
+      router.replace(target, { scroll: false });
+    }
+  }, [selectedBrand, selectedCategoryId, selectedAttributes, pathname, router, searchParams, serverPage]);
 
-  const currentProducts =
-    filteredProducts.length > productsPerPage
-      ? filteredProducts.slice(0, productsPerPage)
-      : filteredProducts;
+  const currentProducts = filteredProducts;
 
   return (
     <div className={`bg-[#373e3e] ${isRTL ? "rtl" : "ltr"}`}>

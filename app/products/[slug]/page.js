@@ -41,6 +41,7 @@ async function fetchProductsByCategory(categorySlug, searchParams) {
     rootCategory: result.rootCategory,
     hasMore: result.hasMore,
     categoryId: result.category.id,
+    mergeSubCategoryIds: result.mergeSubCategoryIds ?? [],
     pageSize: DEFAULT_CATEGORY_PAGE_SIZE,
     page,
   };
@@ -48,13 +49,16 @@ async function fetchProductsByCategory(categorySlug, searchParams) {
 
 export default async function ProductsSlugPage({ params, searchParams }) {
   const categorySlug = params?.slug || null;
-  const { products, rootCategory, hasMore, categoryId, pageSize, page } =
+  const { products, rootCategory, hasMore, categoryId, mergeSubCategoryIds, pageSize, page } =
     await fetchProductsByCategory(categorySlug, searchParams);
 
   let brands = [];
   let attributeValues = [];
   if (categoryId) {
-    const facet = await fetchCategoryAttributeFacets({ categoryId });
+    const facet = await fetchCategoryAttributeFacets({
+      categoryId,
+      mergeSubCategoryIds,
+    });
     brands = facet.brands;
     attributeValues = facet.attributeValues;
   }
@@ -62,6 +66,7 @@ export default async function ProductsSlugPage({ params, searchParams }) {
   return (
     <Suspense fallback={<Loader />}>
       <ProductsClientPage
+        key={`listing-page-${page}`}
         products={products}
         brands={brands}
         attributeValues={attributeValues}

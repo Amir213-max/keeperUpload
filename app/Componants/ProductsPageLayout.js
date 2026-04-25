@@ -160,6 +160,26 @@ export default function ProductsPageLayout({
   const currentProducts = filteredProducts.slice(indexOfFirst, indexOfLast);
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
 
+  const paginationSegments = useMemo(() => {
+    if (totalPages <= 1) return [];
+    const p = Math.max(1, Math.min(currentPage, totalPages));
+    const set = new Set([1, totalPages]);
+    const lo = Math.max(1, p - 2);
+    const hi = Math.min(totalPages, p + 2);
+    for (let i = lo; i <= hi; i += 1) set.add(i);
+    const sorted = Array.from(set).sort((a, b) => a - b);
+    const out = [];
+    let prev = 0;
+    for (const n of sorted) {
+      if (prev > 0 && n - prev > 1) {
+        out.push({ type: "gap", key: `gap-${prev}-${n}` });
+      }
+      out.push({ type: "page", n, key: `p-${n}` });
+      prev = n;
+    }
+    return out;
+  }, [currentPage, totalPages]);
+
   const getBadgeColor = (label) => {
     if (!label) return "bg-gray-400";
     if (label.toLowerCase().includes("new")) return "bg-green-500";
@@ -292,39 +312,57 @@ export default function ProductsPageLayout({
             ))}
           </div>
 
-          {/* Pagination */}
+          {/* Pagination — windowed page numbers to limit DOM when totalPages is large */}
           {totalPages > 1 && (
-            <div className="flex flex-wrap justify-center items-center gap-2 mt-6">
+            <nav
+              className="mt-6 flex flex-wrap items-center justify-center gap-2"
+              aria-label="Pagination"
+            >
               <button
+                type="button"
                 onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                 disabled={currentPage === 1}
-                className="px-3 sm:px-4 py-2 cursor-pointer   bg-gray-200 text-gray-700 disabled:opacity-50 text-sm sm:text-base"
+                className="min-h-11 min-w-[5.5rem] cursor-pointer rounded-full border border-neutral-200 bg-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-50 sm:text-base touch-manipulation"
               >
                 Prev
               </button>
 
-              {[...Array(totalPages)].map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentPage(idx + 1)}
-                  className={`px-3 sm:px-4 py-2 cursor-pointer   text-sm sm:text-base ${
-                    currentPage === idx + 1
-                      ? "bg-[#1f2323] text-white"
-                      : "bg-gray-100 text-gray-700"
-                  }`}
-                >
-                  {idx + 1}
-                </button>
-              ))}
+              {paginationSegments.map((item) =>
+                item.type === "gap" ? (
+                  <span
+                    key={item.key}
+                    className="flex h-11 min-w-[2rem] items-center justify-center text-sm font-medium text-neutral-400"
+                    aria-hidden
+                  >
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setCurrentPage(item.n)}
+                    className={`flex h-11 min-w-11 items-center justify-center rounded-full px-3 text-sm font-semibold transition-colors sm:text-base touch-manipulation ${
+                      currentPage === item.n
+                        ? "bg-[#1f2323] text-white shadow-md"
+                        : "border border-neutral-200 bg-gray-100 text-gray-700 hover:border-[#1f2323] hover:bg-neutral-50"
+                    }`}
+                    aria-label={`Page ${item.n}`}
+                    aria-current={currentPage === item.n ? "page" : undefined}
+                  >
+                    {item.n}
+                  </button>
+                )
+              )}
 
               <button
+                type="button"
                 onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                 disabled={currentPage === totalPages}
-                className="px-3 sm:px-4 py-2 cursor-pointer   bg-gray-200 text-gray-700 disabled:opacity-50 text-sm sm:text-base"
+                className="min-h-11 min-w-[5.5rem] cursor-pointer rounded-full border border-neutral-200 bg-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-50 sm:text-base touch-manipulation"
               >
                 Next
               </button>
-            </div>
+            </nav>
           )}
         </div>
       </div>

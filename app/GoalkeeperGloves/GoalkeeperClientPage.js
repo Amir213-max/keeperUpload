@@ -19,6 +19,7 @@ import { useProductFilters } from "../hooks/useProductFilters";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import ProgressBar from "../Componants/ProgressBar";
 import { buildPathWithPage } from "../lib/paginationUrl";
+import { parseListingPageFromUrlSearchParams } from "../lib/listingPageParse";
 import { LISTING_PAGE_SIZE } from "../lib/listingConfig";
 import ServerPaginationControls from "../Componants/ServerPaginationControls";
 import CategoryListingBanner from "../Componants/CategoryListingBanner";
@@ -45,7 +46,12 @@ export default function GoalKeeperClientPage({
   const [selectedCategoryName, setSelectedCategoryName] = useState(null);
   const [productCatalog, setProductCatalog] = useState(products);
   const [filteredProducts, setFilteredProducts] = useState(products);
-  const serverPage = initialPage;
+  const serverPage = useMemo(() => {
+    if (searchParams.has("page")) {
+      return parseListingPageFromUrlSearchParams(searchParams);
+    }
+    return initialPage;
+  }, [searchParams, initialPage]);
   const productsPerPage = listingPageSize;
   const hasInitializedFromUrlRef = useRef(false);
   const [imagesLoading, setImagesLoading] = useState(false);
@@ -260,16 +266,23 @@ export default function GoalKeeperClientPage({
     setFilteredProducts(result);
   }, [productCatalog, selectedBrand, selectedAttributes]);
 
-  const skipFilterPageResetRef = useRef(true);
+  const lastAppliedFilterSignatureRef = useRef(null);
+  const filterSignature = useMemo(
+    () => JSON.stringify({ selectedBrand, selectedAttributes, selectedCategoryId }),
+    [selectedBrand, selectedAttributes, selectedCategoryId]
+  );
   useEffect(() => {
-    if (skipFilterPageResetRef.current) {
-      skipFilterPageResetRef.current = false;
+    if (lastAppliedFilterSignatureRef.current === null) {
+      // Baseline after hydration: do not reset page on initial filter URL sync.
+      lastAppliedFilterSignatureRef.current = filterSignature;
       return;
     }
+    if (lastAppliedFilterSignatureRef.current === filterSignature) return;
+    lastAppliedFilterSignatureRef.current = filterSignature;
     if (serverPage > 1) {
       router.replace(buildPathWithPage(pathname, searchParams, 1));
     }
-  }, [selectedBrand, selectedAttributes, selectedCategoryId, serverPage, pathname, searchParams, router]);
+  }, [filterSignature, serverPage, pathname, searchParams, router]);
 
   // 🔹 ضبط اسم التصنيف المحدد
   useEffect(() => {
@@ -278,10 +291,7 @@ export default function GoalKeeperClientPage({
   }, [selectedCategoryId, categoriesForSidebar]);
 
   // Server returns one page (listingPageSize products); optional client slice if subset exceeds page (edge case)
-  const currentProducts =
-    filteredProducts.length > productsPerPage
-      ? filteredProducts.slice(0, productsPerPage)
-      : filteredProducts;
+  const currentProducts = filteredProducts;
 
   // 🔹 استخدام useMemo لمنع إنشاء كائن جديد في كل render (يسبب infinite loop)
   const memoizedInitialFilters = useMemo(() => ({ ...selectedAttributes }), [selectedAttributes]);

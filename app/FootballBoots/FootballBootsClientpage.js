@@ -20,6 +20,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import ProgressBar from "../Componants/ProgressBar";
 import ServerPaginationControls from "../Componants/ServerPaginationControls";
 import { buildPathWithPage } from "../lib/paginationUrl";
+import { parseListingPageFromUrlSearchParams } from "../lib/listingPageParse";
 import { LISTING_PAGE_SIZE } from "../lib/listingConfig";
 import CategoryListingBanner from "../Componants/CategoryListingBanner";
 import BrandCategoryCovers from "../Componants/BrandCategoryCovers";
@@ -42,7 +43,12 @@ export default function FootballClientPage({
   const selectedCategoryId = categoryContext?.selectedCategoryId ?? null;
   const setSelectedCategoryId = categoryContext?.setSelectedCategoryId ?? (() => {});
   const [selectedCategoryName, setSelectedCategoryName] = useState(null);
-  const serverPage = initialPage;
+  const serverPage = useMemo(() => {
+    if (searchParams.has("page")) {
+      return parseListingPageFromUrlSearchParams(searchParams);
+    }
+    return initialPage;
+  }, [searchParams, initialPage]);
   const productsPerPage = listingPageSize;
   
   // ✅ إضافة state لتتبع تحميل الصور
@@ -222,16 +228,23 @@ useEffect(() => {
     });
   }, [products, selectedBrand, selectedAttributes]);
 
-  const skipFilterPageResetRef = useRef(true);
+  const lastAppliedFilterSignatureRef = useRef(null);
+  const filterSignature = useMemo(
+    () => JSON.stringify({ selectedBrand, selectedAttributes, selectedCategoryId }),
+    [selectedBrand, selectedAttributes, selectedCategoryId]
+  );
   useEffect(() => {
-    if (skipFilterPageResetRef.current) {
-      skipFilterPageResetRef.current = false;
+    if (lastAppliedFilterSignatureRef.current === null) {
+      // Baseline after hydration: do not reset page on initial filter URL sync.
+      lastAppliedFilterSignatureRef.current = filterSignature;
       return;
     }
+    if (lastAppliedFilterSignatureRef.current === filterSignature) return;
+    lastAppliedFilterSignatureRef.current = filterSignature;
     if (serverPage > 1) {
       router.replace(buildPathWithPage(pathname, searchParams, 1));
     }
-  }, [selectedBrand, selectedAttributes, selectedCategoryId, serverPage, pathname, searchParams, router]);
+  }, [filterSignature, serverPage, pathname, searchParams, router]);
 
   // 🔹 ضبط اسم التصنيف المحدد
   useEffect(() => {
@@ -239,10 +252,7 @@ useEffect(() => {
     setSelectedCategoryName(cat?.name || null);
   }, [selectedCategoryId, categoriesForSidebar]);
 
-  const currentProducts =
-    filteredProducts.length > productsPerPage
-      ? filteredProducts.slice(0, productsPerPage)
-      : filteredProducts;
+  const currentProducts = filteredProducts;
 
   // ✅ حساب عدد الصور الإجمالي وبدء التحميل الأولي
   useEffect(() => {
