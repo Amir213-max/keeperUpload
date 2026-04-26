@@ -4,7 +4,7 @@
  * legacyRootCategoryIds: optional fallback if slug differs between environments — remove when CMS slugs are stable.
  */
 
-/** @type {Record<string, { slug: string; legacyRootCategoryIds?: string[] }>} */
+/** @type {Record<string, { slug: string; legacyRootCategoryIds?: string[]; fallbackParentNameIncludes?: string[]; fallbackToFirstSubCategory?: boolean }>} */
 export const verticalListingConfig = Object.freeze({
   goalkeeperGloves: {
     slug: "goalkeeper-gloves",
@@ -24,8 +24,10 @@ export const verticalListingConfig = Object.freeze({
   },
   /** CMS has no `goalkeeper-apparel` root; 113 absent on keepersport.store. Jerseys root lists GK tops (closest vertical). */
   goalkeeperApparel: {
-    slug: "goalkeeper-jerseys",
-    legacyRootCategoryIds: ["3", "21", "113"],
+    slug: "goalkeeper-apparel",
+    legacyRootCategoryIds: ["113"],
+    fallbackParentNameIncludes: ["goalkeeper apparel"],
+    fallbackToFirstSubCategory: true,
   },
   sale: {
     slug: "sale",

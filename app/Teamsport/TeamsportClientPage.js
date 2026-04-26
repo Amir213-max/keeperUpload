@@ -210,8 +210,8 @@ export default function TeamsportClientPage({
 
   const lastAppliedFilterSignatureRef = useRef(null);
   const filterSignature = useMemo(
-    () => JSON.stringify({ selectedBrand, selectedAttributes, selectedCategoryId }),
-    [selectedBrand, selectedAttributes, selectedCategoryId]
+    () => JSON.stringify({ selectedBrand, selectedAttributes }),
+    [selectedBrand, selectedAttributes]
   );
   useEffect(() => {
     if (lastAppliedFilterSignatureRef.current === null) {

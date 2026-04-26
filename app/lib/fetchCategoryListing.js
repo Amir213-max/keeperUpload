@@ -116,6 +116,7 @@ async function collectMergedListingProductsFull({
 }
 
 const MERGED_LIST_CACHE_SECONDS = Number(process.env.LISTING_MERGED_CACHE_SECONDS || 120);
+const CATEGORIES_CACHE_SECONDS = Number(process.env.LISTING_CATEGORIES_CACHE_SECONDS || 300);
 
 /** Stable cache key payload (sorted sub ids) for unstable_cache. */
 function mergedListingCachePayload(rootCategoryId, mergeSubCategoryIds, brandId, search, batchLimit, maxPages) {
@@ -148,6 +149,16 @@ const getMergedListingProductsCached = unstable_cache(
   ["listing-merged-products-full"],
   { revalidate: MERGED_LIST_CACHE_SECONDS }
 );
+
+const getListingCategoriesDataCached = unstable_cache(
+  async () => graphqlClient.request(GET_CATEGORIES_ONLY_QUERY),
+  ["listing-categories-only"],
+  { revalidate: CATEGORIES_CACHE_SECONDS }
+);
+
+export async function getListingCategoriesData() {
+  return getListingCategoriesDataCached();
+}
 
 /**
  * Collect + dedupe + sort products for root listing when subtree merge is enabled.
@@ -187,6 +198,45 @@ async function fetchMergedRootListing({
  * Schema does not return total count on this query — use hasMore (length === limit).
  */
 export const DEFAULT_CATEGORY_PAGE_SIZE = LISTING_PAGE_SIZE;
+
+function getCategoryDisplayName(value) {
+  if (!value) return "";
+  if (typeof value !== "string") return String(value);
+  const raw = value.trim();
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      const candidate = parsed.en || parsed.ar || parsed.name || "";
+      return String(candidate || raw).trim();
+    }
+  } catch {
+    // Keep original string if not JSON.
+  }
+  return raw;
+}
+
+function findFirstSubCategoryFromParentNameHints(rootCategories, parentNameHints = []) {
+  if (!Array.isArray(rootCategories) || rootCategories.length === 0) return null;
+  const normalizedHints = parentNameHints
+    .map((x) => String(x || "").toLowerCase().trim())
+    .filter(Boolean);
+  if (normalizedHints.length === 0) return null;
+
+  for (const root of rootCategories) {
+    if (!root) continue;
+    const rootName = getCategoryDisplayName(root.name).toLowerCase();
+    if (!rootName) continue;
+    const matched = normalizedHints.some((hint) => rootName.includes(hint));
+    if (!matched) continue;
+    const firstSub = (root.subCategories || []).find(Boolean) || null;
+    if (firstSub) {
+      return { category: firstSub, parentRoot: root };
+    }
+  }
+
+  return null;
+}
 
 /**
  * Fetch products for a category via Query.productsWithFilters + Query.rootCategory (metadata).
@@ -268,15 +318,15 @@ export async function fetchCategoryListing({
 export async function fetchCategoryListingBySlug({
   slug,
   legacyRootCategoryIds = [],
+  fallbackParentNameIncludes = [],
+  fallbackToFirstSubCategory = false,
   brandId,
   search,
   limit = DEFAULT_CATEGORY_PAGE_SIZE,
   offset = 0,
   categoriesData = null,
 }) {
-  const catsPayload =
-    categoriesData ||
-    (await graphqlClient.request(GET_CATEGORIES_ONLY_QUERY));
+  const catsPayload = categoriesData || (await getListingCategoriesData());
   const rootCategories = catsPayload.rootCategories || [];
 
   const resolved = findCategoryBySlugForListing(rootCategories, slug);
@@ -294,6 +344,14 @@ export async function fetchCategoryListingBySlug({
         }
       }
     }
+  }
+
+  if (!category && fallbackToFirstSubCategory && fallbackParentNameIncludes.length > 0) {
+    const fallback = findFirstSubCategoryFromParentNameHints(
+      rootCategories,
+      fallbackParentNameIncludes
+    );
+    category = fallback?.category ?? null;
   }
 
   if (!category) {
@@ -347,6 +405,8 @@ export async function fetchCategoryListingByVertical(verticalKey, options = {}) 
   return fetchCategoryListingBySlug({
     slug: cfg.slug,
     legacyRootCategoryIds: cfg.legacyRootCategoryIds,
+    fallbackParentNameIncludes: cfg.fallbackParentNameIncludes,
+    fallbackToFirstSubCategory: cfg.fallbackToFirstSubCategory,
     ...options,
   });
 }
@@ -358,8 +418,30 @@ export async function fetchCategoryListingByVertical(verticalKey, options = {}) 
 export const MAX_CATEGORY_FACET_PAGES = 100;
 const DEFAULT_FACET_MAX_PAGES = Number(process.env.LISTING_FACET_MAX_PAGES || 3);
 const FACET_CACHE_TTL_MS = Number(process.env.LISTING_FACET_CACHE_TTL_MS || 5 * 60 * 1000);
+const FACET_CACHE_MAX_ENTRIES = Math.max(
+  10,
+  Number(process.env.LISTING_FACET_CACHE_MAX_ENTRIES || 100)
+);
 const facetCache = new Map();
 const facetInflight = new Map();
+
+function trimFacetCache() {
+  const now = Date.now();
+  for (const [key, entry] of facetCache.entries()) {
+    if (now - entry.ts >= FACET_CACHE_TTL_MS) {
+      facetCache.delete(key);
+    }
+  }
+
+  if (facetCache.size <= FACET_CACHE_MAX_ENTRIES) return;
+
+  const oldestEntries = [...facetCache.entries()]
+    .sort((a, b) => a[1].ts - b[1].ts)
+    .slice(0, facetCache.size - FACET_CACHE_MAX_ENTRIES);
+  for (const [key] of oldestEntries) {
+    facetCache.delete(key);
+  }
+}
 
 /**
  * Paginate productsWithFilters for a category and aggregate attribute value counts
@@ -376,6 +458,8 @@ export async function fetchCategoryAttributeFacets({
   maxPages = DEFAULT_FACET_MAX_PAGES,
   mergeSubCategoryIds,
 }) {
+  trimFacetCache();
+
   const subs = Array.from(
     new Set(
       (mergeSubCategoryIds || [])
@@ -465,6 +549,7 @@ export async function fetchCategoryAttributeFacets({
 
     const result = buildListingAttributeFacetsFromProducts(allProducts);
     facetCache.set(cacheKey, { ts: Date.now(), value: result });
+    trimFacetCache();
     return result;
   })();
 

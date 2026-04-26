@@ -35,6 +35,7 @@ export default function ProductsClientPage({
   products,
   brands,
   attributeValues,
+  initialCategories = [],
   categoryId: initialCategoryId,
   categorySlug: initialCategorySlug,
   rootCategory,
@@ -48,7 +49,9 @@ export default function ProductsClientPage({
   const router = useRouter();
   const pathname = usePathname();
 
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(() =>
+    Array.isArray(initialCategories) ? initialCategories : []
+  );
   const categoryContext = useCategory();
   const selectedCategoryId = categoryContext?.selectedCategoryId || null;
   const setSelectedCategoryId = categoryContext?.setSelectedCategoryId || (() => {});
@@ -71,6 +74,10 @@ export default function ProductsClientPage({
   // 🔹 جلب التصنيفات فقط (بدون منتجات)
   // IMPORTANT: Fetch only categories, not products. Fetching all products causes 503 errors.
   useEffect(() => {
+    if (Array.isArray(initialCategories) && initialCategories.length > 0) {
+      setCategories(initialCategories);
+      return;
+    }
     const fetchCategories = async () => {
       try {
         // Use API route proxy to avoid CORS issues
@@ -82,7 +89,7 @@ export default function ProductsClientPage({
       }
     };
     fetchCategories();
-  }, []);
+  }, [initialCategories]);
 
   const categoriesForSidebar = useMemo(
     () => flattenCategoriesWithParentRefs(categories),
@@ -407,8 +414,8 @@ export default function ProductsClientPage({
 
   const lastAppliedFilterSignatureRef = useRef(null);
   const filterSignature = useMemo(
-    () => JSON.stringify({ selectedBrand, selectedAttributes, selectedCategoryId }),
-    [selectedBrand, selectedAttributes, selectedCategoryId]
+    () => JSON.stringify({ selectedBrand, selectedAttributes }),
+    [selectedBrand, selectedAttributes]
   );
   useEffect(() => {
     if (lastAppliedFilterSignatureRef.current === null) {

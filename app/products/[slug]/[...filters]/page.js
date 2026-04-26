@@ -4,6 +4,7 @@ import Loader from "../../../Componants/Loader";
 import {
   fetchCategoryListingBySlug,
   fetchCategoryAttributeFacets,
+  getListingCategoriesData,
   DEFAULT_CATEGORY_PAGE_SIZE,
 } from "../../../lib/fetchCategoryListing";
 import { getListingPageQuery } from "../../../lib/categoryPageServer";
@@ -24,10 +25,12 @@ const fetchProductsByCategory = async (categorySlug, searchParams) => {
 
   const { offset, page } = await getListingPageQuery(searchParams);
 
+  const categoriesData = await getListingCategoriesData();
   const result = await fetchCategoryListingBySlug({
     slug: categorySlug,
     limit: DEFAULT_CATEGORY_PAGE_SIZE,
     offset,
+    categoriesData,
   });
 
   if (result.notFound) {
@@ -41,6 +44,7 @@ const fetchProductsByCategory = async (categorySlug, searchParams) => {
   return {
     products: sorted,
     rootCategory: result.rootCategory,
+    categoriesData,
     totalCount: sorted.length + offset,
     hasMore: result.hasMore,
     categoryId: result.category.id,
@@ -54,7 +58,7 @@ export default async function ProductsFiltersPage({ params, searchParams }) {
   const categorySlug = params?.slug || null;
   const filters = params?.filters || [];
 
-  const { products, rootCategory, totalCount, hasMore, categoryId, mergeSubCategoryIds, page, pageSize } =
+  const { products, rootCategory, categoriesData, totalCount, hasMore, categoryId, mergeSubCategoryIds, page, pageSize } =
     await fetchProductsByCategory(categorySlug, searchParams);
 
   let brands = [];
@@ -77,6 +81,7 @@ export default async function ProductsFiltersPage({ params, searchParams }) {
         attributeValues={attributeValues}
         categorySlug={categorySlug}
         rootCategory={rootCategory}
+        initialCategories={categoriesData?.rootCategories || []}
         initialFilters={filters}
         currentPage={page}
         totalCount={totalCount}
