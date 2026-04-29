@@ -201,7 +201,6 @@ export default function RecommendedSlider({ productId }) {
                                 sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
                                 quality={75}
                                 placeholder="empty"
-                                unoptimized={item.images[0]?.startsWith('http')}
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-gray-400" role="img" aria-label="No image available">

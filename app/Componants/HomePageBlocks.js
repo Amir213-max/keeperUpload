@@ -23,9 +23,9 @@ import BlogImageWithLoader from "../components/BlogImageWithLoader";
 
 const MultiSlider_6 = dynamic(() => import("./Slider_6"), { ssr: false });
 
-const BRAND_CATEGORY_FETCH_LIMIT = 80;
+const BRAND_CATEGORY_FETCH_LIMIT = 24;
 /** Category-only fetch window when CMS sends brand as slug (no server-side brand filter). */
-const BRAND_SLUG_CATEGORY_FETCH_LIMIT = 80;
+const BRAND_SLUG_CATEGORY_FETCH_LIMIT = 24;
 
 /** Homepage blogs: grid up to this count; above → horizontal strip like multi-banners */
 const HOME_BLOGS_GRID_MAX = 4;
@@ -69,13 +69,13 @@ function sortProductsNewestFirst(products) {
   });
 }
 
-export default function HomePageBlocks() {
+export default function HomePageBlocks({ initialBlocks = null, initialBlogs = null }) {
   const { lang, t } = useTranslation();
   const BASE_URL = "https://keepersport.store/storage/";
   const { loading: currencyLoading } = useCurrency();
-  const [blocks, setBlocks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [blogs, setBlogs] = useState([]);
+  const [blocks, setBlocks] = useState(Array.isArray(initialBlocks) ? initialBlocks : []);
+  const [loading, setLoading] = useState(!Array.isArray(initialBlocks));
+  const [blogs, setBlogs] = useState(Array.isArray(initialBlogs) ? initialBlogs : []);
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -86,10 +86,13 @@ export default function HomePageBlocks() {
   }, []);
 
   useEffect(() => {
+    if (Array.isArray(initialBlocks) && initialBlocks.length > 0) {
+      setLoading(false);
+      return;
+    }
     async function fetchBlocks() {
       try {
-        // ✅ جلب الـ blocks أولاً
-        // Use API route proxy to avoid CORS issues
+        // Fetch homepage blocks
         const data = await graphqlRequest(GET_ACTIVE_HOME_PAGE_BLOCKS);
         let activeBlocks = data.activeHomepageBlocks || [];
 
@@ -224,12 +227,13 @@ export default function HomePageBlocks() {
 
         setBlocks(activeBlocks);
 
-        // ✅ جلب الـ blogs
-        try {
-          const blogsData = await graphqlRequest(GET_BLOGS_QUERY);
-          setBlogs(blogsData?.blogs || []);
-        } catch (err) {
-          console.error("❌ Error fetching blogs:", err);
+        if (!Array.isArray(initialBlogs)) {
+          try {
+            const blogsData = await graphqlRequest(GET_BLOGS_QUERY);
+            setBlogs(blogsData?.blogs || []);
+          } catch (err) {
+            console.error("❌ Error fetching blogs:", err);
+          }
         }
 
         setLoading(false);
@@ -240,7 +244,7 @@ export default function HomePageBlocks() {
     }
 
     fetchBlocks();
-  }, []);
+  }, [initialBlocks, initialBlogs]);
 
   if (loading) return <Loader />;
   if (!blocks.length) return <p className="text-center py-8 text-gray-500">No blocks available.</p>;
@@ -304,7 +308,7 @@ export default function HomePageBlocks() {
                           width={1920}
                           height={800}
                           className="w-full h-auto object-contain"
-                          unoptimized
+                          sizes="(max-width: 768px) 100vw, 1200px"
                         />
                         <div className="absolute inset-0 bg-black/40 flex flex-col justify-center items-center text-center text-white px-4">
                           <h3 className="text-2xl md:text-4xl font-bold mb-3">{slide.title}</h3>
@@ -372,7 +376,6 @@ export default function HomePageBlocks() {
                       ? "(max-width: 768px) 100vw, 50vw" 
                       : "100vw"}
                     className="w-full h-auto object-center transition-transform duration-500 ease-out group-hover:scale-105"
-                    unoptimized
                     priority={isFirstBannerBlock && idx === 0}
                   />
                 ) : (
@@ -384,7 +387,6 @@ export default function HomePageBlocks() {
                       ? "(max-width: 768px) 100vw, 50vw" 
                       : "100vw"}
                     className="object-center transition-transform duration-500 ease-out group-hover:scale-105"
-                    unoptimized
                     priority={isFirstBannerBlock && idx === 0}
                   />
                 )}
@@ -459,8 +461,7 @@ export default function HomePageBlocks() {
                         height={570}
                         sizes="(max-width: 768px) 85vw, 380px"
                         className="w-full h-full object-contain"
-                        quality={95}
-                        unoptimized
+                        quality={85}
                         priority={isFirstBannerBlock && idx === 0}
                       />
                     </motion.div>
@@ -476,8 +477,7 @@ export default function HomePageBlocks() {
                         fill
                         sizes="(max-width: 768px) 85vw, 380px"
                         className="object-contain"
-                        quality={95}
-                        unoptimized
+                        quality={85}
                         priority={isFirstBannerBlock && idx === 0}
                       />
                     </motion.div>
@@ -567,7 +567,6 @@ export default function HomePageBlocks() {
                                     loading="lazy"
                                     sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 25vw"
                                     quality={85}
-                                    unoptimized={typeof product.images[0] === "string" && product.images[0]?.startsWith('http')}
                                   />
                                 ) : (
                                   <div className="text-gray-500 text-sm" role="img" aria-label="No image available">No Image</div>

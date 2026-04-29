@@ -8,8 +8,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useTranslation } from '../contexts/TranslationContext';
 import { useEffect, useState } from 'react';
-import { graphqlClient } from '../lib/graphqlClient';
-import { PRODUCTS_QUERY } from '../lib/queries';
+import { fetchPromoSliderProducts } from '../lib/clientCategoryListing';
 
 export default function MultiSlider() {
   const { t, lang } = useTranslation();
@@ -18,8 +17,8 @@ export default function MultiSlider() {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const data = await graphqlClient.request(PRODUCTS_QUERY, { limit: 10, offset: 0 });
-        setProducts(data.products || []);
+        const list = await fetchPromoSliderProducts("glovesCollection", { limit: 10 });
+        setProducts(list || []);
       } catch (err) {
         console.error("Error fetching products:", err);
       }

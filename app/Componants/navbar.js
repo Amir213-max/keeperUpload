@@ -5,13 +5,11 @@ import { useState , useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { Globe, ChevronDown } from 'lucide-react';
 import Sidebar from './sidebar';
 import NavbarNotifications from './NotificationsBell';
 import { useAuth } from '../contexts/AuthContext'; // ✅ استدعاء الـ AuthContext
-import { GET_ACTIVE_HOME_PAGE_BLOCKS } from '../lib/queries';
-import { graphqlClient } from '../lib/graphqlClient';
 import { useCategory } from '../contexts/CategoryContext';
 import { useCart } from '../contexts/CartContext';
 import { clearTranslationCache } from '../lib/translationService';
@@ -23,7 +21,6 @@ const SearchComponent = dynamic(() => import('./SearchComponant'), { ssr: false 
 export default function NavbarWithLinks() {
   const { t, lang, setLang } = useTranslation();
   const pathname = usePathname();
-  const router = useRouter();
   const [cartOpen, setCartOpen] = useState(false);
   const { getCartItemCount } = useCart();
   const cartItemCount = getCartItemCount();
@@ -36,41 +33,11 @@ export default function NavbarWithLinks() {
     clearTranslationCache();
   }, [lang]);
 
-    const [blocks, setBlocks] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const { siteLogoUrl, offersLabel } = usePublicNavSettings();
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const langDropdownRef = useRef(null);
-  useEffect(() => {
-    async function fetchBlocks() {
-      try {
-        const data = await graphqlClient.request(GET_ACTIVE_HOME_PAGE_BLOCKS);
-        const activeBlocks = data.activeHomepageBlocks || [];
-        setBlocks(activeBlocks);
-
-        // تحميل المنتجات الخاصة بالبلوكات من نوع products
-       
-      } catch (error) {
-        console.error("❌ Error fetching home page blocks:", error);
-      } 
-    }
-
-    fetchBlocks();
-  }, []);
-
-  useEffect(() => {
-    const topRoutes = [
-      "/GoalkeeperGloves",
-      "/FootballBoots",
-      "/Goalkeeperapparel",
-      "/Goalkeeperequipment",
-      "/Teamsport",
-      "/Sale",
-    ];
-    topRoutes.forEach((route) => router.prefetch(route));
-  }, [router]);
-
   // ✅ فتح الـ CartSidebar عند إضافة منتج
   useEffect(() => {
     const handleOpenCart = () => {
@@ -111,8 +78,6 @@ export default function NavbarWithLinks() {
   };
   
 
- const firstTextBlock = blocks.find((b) => b.type === "text");
-  
   return (
     <>
       {/* ✅ Offers Label Banner - أعلى نقطة في المشروع - يظهر فقط في الصفحة الرئيسية */}

@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect } from "react";
+import dynamic from "next/dynamic";
 import ProductPage from "./ProductPage";
 import ProductDescription from "./ProductDescription";
-import RecommendedSlider from "./RecommendedProducts";
+
+const RecommendedSlider = dynamic(() => import("./RecommendedProducts"), {
+  ssr: false,
+});
 
 export default function ProductPageClient({ product }) {
   useEffect(() => {

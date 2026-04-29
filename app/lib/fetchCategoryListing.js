@@ -33,7 +33,7 @@ function mergeMaxPagesPerCategory() {
     1,
     Math.min(
       100,
-      Number(process.env.LISTING_SUBTREE_MERGE_MAX_PAGES_PER_CATEGORY || 8) || 8
+      Number(process.env.LISTING_SUBTREE_MERGE_MAX_PAGES_PER_CATEGORY || 4) || 4
     )
   );
 }
@@ -416,7 +416,7 @@ export async function fetchCategoryListingByVertical(verticalKey, options = {}) 
  * Prevents unbounded loops on huge catalogs; counts may be partial if truncated.
  */
 export const MAX_CATEGORY_FACET_PAGES = 100;
-const DEFAULT_FACET_MAX_PAGES = Number(process.env.LISTING_FACET_MAX_PAGES || 3);
+const DEFAULT_FACET_MAX_PAGES = Number(process.env.LISTING_FACET_MAX_PAGES || 2);
 const FACET_CACHE_TTL_MS = Number(process.env.LISTING_FACET_CACHE_TTL_MS || 5 * 60 * 1000);
 const FACET_CACHE_MAX_ENTRIES = Math.max(
   10,

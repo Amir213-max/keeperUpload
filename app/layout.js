@@ -13,6 +13,8 @@ import { CategoryProvider } from "./contexts/CategoryContext";
 import { PublicNavSettingsProvider } from "./contexts/PublicNavSettingsContext";
 import ProgressBar from "./components/ProgressBar";
 import WebVitalsReporter from "./components/WebVitalsReporter";
+import { graphqlClient } from "./lib/graphqlClient";
+import { PUBLIC_SETTINGS_NAV_QUERY } from "./lib/queries";
 
 
 const geistSans = Geist({
@@ -73,8 +75,16 @@ export const metadata = {
 };
 
 
-export default function RootLayout({ children  }) {
+export default async function RootLayout({ children  }) {
  
+  let initialPublicNavSettings = [];
+  try {
+    // Server-side prefetch avoids first-load client waterfall for logo/offers label.
+    const navData = await graphqlClient.request(PUBLIC_SETTINGS_NAV_QUERY);
+    initialPublicNavSettings = navData?.publicSettings || [];
+  } catch {
+    initialPublicNavSettings = [];
+  }
 
   return (
     
@@ -82,7 +92,7 @@ export default function RootLayout({ children  }) {
      <body className={`${geistSans.variable} ${geistMono.variable}`}>
 
    <TranslationProvider>
-   <PublicNavSettingsProvider>
+   <PublicNavSettingsProvider initialSettings={initialPublicNavSettings}>
 <AuthProvider>
 <CurrencyProvider>
   

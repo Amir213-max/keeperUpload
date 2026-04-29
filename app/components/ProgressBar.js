@@ -63,26 +63,6 @@ export default function ProgressBar() {
     };
   }, [pathname]);
 
-  // مراقبة أحداث التنقل من الروابط
-  useEffect(() => {
-    const handleClick = (e) => {
-      const link = e.target.closest('a[href]');
-      if (link && link.href) {
-        const href = link.getAttribute('href');
-        // التحقق من أن الرابط ليس external أو anchor
-        if (href && !href.startsWith('http') && !href.startsWith('#') && href.startsWith('/')) {
-          setLoading(true);
-          setProgress(0);
-        }
-      }
-    };
-
-    document.addEventListener('click', handleClick);
-    return () => {
-      document.removeEventListener('click', handleClick);
-    };
-  }, []);
-
   if (!loading) return null;
 
   return (

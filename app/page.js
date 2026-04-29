@@ -17,6 +17,8 @@ import MultiSlider_4 from "./Componants/Slider_4";
 import MultiSlider_5 from "./Componants/Slider_5";
 import MultiSlider_6 from "./Componants/Slider_6";
 import MultiSlider_7 from "./Componants/Slider_7";
+import { graphqlClient } from "./lib/graphqlClient";
+import { GET_ACTIVE_HOME_PAGE_BLOCKS, GET_BLOGS_QUERY } from "./lib/queries";
 // باقي الاستيرادات بدون Splide لأنه Client فقط
 
 
@@ -33,7 +35,18 @@ import MultiSlider_7 from "./Componants/Slider_7";
 // };
 
 export default async function Home() {
-  // const products = await fetchProductsByCategory();
+  let initialBlocks = [];
+  let initialBlogs = [];
+  try {
+    const [blocksData, blogsData] = await Promise.all([
+      graphqlClient.request(GET_ACTIVE_HOME_PAGE_BLOCKS),
+      graphqlClient.request(GET_BLOGS_QUERY),
+    ]);
+    initialBlocks = blocksData?.activeHomepageBlocks || [];
+    initialBlogs = blogsData?.blogs || [];
+  } catch (error) {
+    console.error("Home initial payload fetch failed:", error);
+  }
 
   return (
     <div>
@@ -66,7 +79,7 @@ export default async function Home() {
       {/* باقي الأقسام */}
       {/* <button className="p-5 bg-amber-300 text-white hover:bg-amber-500 " onClick={subscribeUser}>اشترك في الإشعارات</button> */}
       {/* <Cover /> */}
-      <HomePageBlocks />
+      <HomePageBlocks initialBlocks={initialBlocks} initialBlogs={initialBlogs} />
       {/* <button
       onClick={sendTestNotification}
       className="px-4 py-2 bg-blue-500 text-white rounded"

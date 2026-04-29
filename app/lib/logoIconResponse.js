@@ -29,7 +29,7 @@ export async function buildLogoPngWithBlackBackground(size) {
   const logoUrl = await getSiteLogoUrlForIcons();
 
   try {
-    const response = await fetch(logoUrl, { cache: "no-store" });
+    const response = await fetch(logoUrl, { next: { revalidate: 300 } });
     if (!response.ok) {
       throw new Error(`Failed to fetch logo: ${response.status}`);
     }

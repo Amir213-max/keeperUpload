@@ -45,9 +45,12 @@ export async function POST(request) {
     }
 
     const upstreamBody = buildUpstreamPayload(query, variables);
+    const hasAuth = Boolean(headers.Authorization || headers.authorization);
 
     const res = await fetch(GRAPHQL_ENDPOINT, {
       method: "POST",
+      cache: hasAuth ? "no-store" : "force-cache",
+      next: hasAuth ? undefined : { revalidate: 60 },
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",

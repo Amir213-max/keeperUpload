@@ -30,6 +30,7 @@ export default function FootballClientPage({
   brands,
   attributeValues,
   rootCategory,
+  initialCategories = [],
   categoryId = null,
   initialHasMore = false,
   listingPageSize = LISTING_PAGE_SIZE,
@@ -38,7 +39,9 @@ export default function FootballClientPage({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(() =>
+    Array.isArray(initialCategories) ? initialCategories : []
+  );
   const categoryContext = useCategory();
   const selectedCategoryId = categoryContext?.selectedCategoryId ?? null;
   const setSelectedCategoryId = categoryContext?.setSelectedCategoryId ?? (() => {});
@@ -84,6 +87,10 @@ useEffect(() => {
   // 🔹 جلب التصنيفات فقط (بدون منتجات)
   // IMPORTANT: Fetch only categories, not products. Fetching all products causes 503 errors.
   useEffect(() => {
+    if (Array.isArray(initialCategories) && initialCategories.length > 0) {
+      setCategories(initialCategories);
+      return;
+    }
     const fetchCategories = async () => {
       try {
         // Use API route proxy to avoid CORS issues
@@ -95,7 +102,7 @@ useEffect(() => {
       }
     };
     fetchCategories();
-  }, []);
+  }, [initialCategories]);
 
   const categoriesForSidebar = useMemo(
     () => flattenCategoriesWithParentRefs(categories),

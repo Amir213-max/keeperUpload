@@ -5,6 +5,7 @@ import Loader from "../../Componants/Loader";
 import {
   fetchCategoryListingByVertical,
   fetchCategoryAttributeFacets,
+  getListingCategoriesData,
   DEFAULT_CATEGORY_PAGE_SIZE,
 } from "../../lib/fetchCategoryListing";
 import { getListingPageQuery } from "../../lib/categoryPageServer";
@@ -28,6 +29,7 @@ export default async function Page({ searchParams }) {
     maxPages: 1,
     mergeSubCategoryIds: result.mergeSubCategoryIds ?? [],
   });
+  const categoriesData = await getListingCategoriesData();
 
   return (
     <Suspense fallback={<Loader />}>
@@ -36,6 +38,7 @@ export default async function Page({ searchParams }) {
         products={sorted}
         brands={brands}
         attributeValues={attributeValues}
+        initialCategories={categoriesData?.rootCategories || []}
         rootCategory={result.rootCategory}
         categoryId={result.category.id}
         initialHasMore={result.hasMore}

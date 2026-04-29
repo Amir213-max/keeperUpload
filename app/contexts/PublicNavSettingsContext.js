@@ -14,12 +14,22 @@ const PublicNavSettingsContext = createContext({
   ready: false,
 });
 
-export function PublicNavSettingsProvider({ children }) {
-  const [siteLogoUrl, setSiteLogoUrl] = useState(null);
-  const [offersLabel, setOffersLabel] = useState(null);
-  const [ready, setReady] = useState(false);
+export function PublicNavSettingsProvider({ children, initialSettings = null }) {
+  const [siteLogoUrl, setSiteLogoUrl] = useState(() =>
+    Array.isArray(initialSettings) ? pickSiteLogoUrl(initialSettings) : null
+  );
+  const [offersLabel, setOffersLabel] = useState(() =>
+    Array.isArray(initialSettings)
+      ? initialSettings.find((s) => s.group && String(s.group).toLowerCase() === "offers_label") || null
+      : null
+  );
+  const [ready, setReady] = useState(Array.isArray(initialSettings));
 
   useEffect(() => {
+    if (Array.isArray(initialSettings) && initialSettings.length > 0) {
+      setReady(true);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -61,7 +71,7 @@ export function PublicNavSettingsProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialSettings]);
 
   const value = useMemo(
     () => ({ siteLogoUrl, offersLabel, ready }),

@@ -63,7 +63,6 @@ export default function BlogImageWithLoader({
           fill
           sizes={sizes}
           className={`${className} transition-all duration-500 ease-out ${done ? "scale-100 opacity-100" : "scale-[0.98] opacity-0"}`}
-          unoptimized
           priority={priority}
           loading={priority ? "eager" : "lazy"}
           onLoadingComplete={() => setDone(true)}
