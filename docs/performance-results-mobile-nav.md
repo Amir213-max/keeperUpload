@@ -82,4 +82,5 @@
 
 - The dominant bottleneck route `/GoalkeeperGloves` improved strongly in both TTFB and total time.
 - Mobile tap-to-navigation perception should be better because first content is no longer blocked as long by image-gating.
-- For strict UX timing (`tap_to_url` and `tap_to_fcp`), run one DevTools mobile trace set under identical throttle/profile.
+- For strict UX timing (`tap_to_url` and `tap_to_fcp`), run one DevTools mobile trace set under identical throttle/profile (step-by-step: [performance-validation.md](./performance-validation.md#tap-to-fcp-and-tap-to-lcp-validation)).
+- `/products/[slug]` listing routes use `revalidate = 120` and lighter facet fetches (`maxPages: 1`); measure with `PERF_PRODUCTS_SLUG` (see [performance-validation.md](./performance-validation.md)).

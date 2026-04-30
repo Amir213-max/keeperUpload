@@ -13,6 +13,7 @@ import {
   PRODUCTS_WITH_FILTERS_LISTING_QUERY,
 } from "../lib/queries";
 import { fetchClientProductsByVertical } from "../lib/clientCategoryListing";
+import { signalNavigationPending } from "../lib/navigationProgress";
 import { motion, AnimatePresence } from "framer-motion";
 import CartSidebar from "./CartSidebar";
 import Image from "next/image";
@@ -520,7 +521,10 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
       const base = listingBasePathFromPathname(pathname);
       if (base) {
         const url = buildParentPageUrl(base, {}, brandName);
-        if (url) router.push(url, { scroll: false });
+        if (url) {
+          signalNavigationPending();
+          router.push(url, { scroll: false });
+        }
       }
       queueMicrotask(() => closeAllMobilePanels());
     },
@@ -533,6 +537,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
 
     if (route) {
       localStorage.setItem("sidebar_open_parent_id", String(parentId));
+      signalNavigationPending();
       router.push(route, { scroll: false });
       closeAllMobilePanels();
     } else {
@@ -540,6 +545,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
 
       if (parentCategory?.slug) {
         const slug = encodeURIComponent(parentCategory.slug);
+        signalNavigationPending();
         router.push(`/products/${slug}`, { scroll: false });
         closeAllMobilePanels();
       } else {
@@ -599,6 +605,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
     if (route) {
       // 🔹 حفظ parentId في localStorage لفتح الـ subcategories بعد التنقل
       localStorage.setItem('sidebar_open_parent_id', String(parentId));
+      signalNavigationPending();
       router.push(route, { scroll: false });
       
       if (setIsOpen) setIsOpen(false); // إغلاق الـ drawer على الموبايل
@@ -606,6 +613,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
       // Fallback: استخدام products/slug إذا لم نجد route رئيسي
       if (parentCategory?.slug) {
         const slug = encodeURIComponent(parentCategory.slug);
+        signalNavigationPending();
         router.push(`/products/${slug}`, { scroll: false });
         if (setIsOpen) setIsOpen(false);
       } else {
@@ -643,6 +651,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
     const brandUrl = buildParentPageUrl("/GoalkeeperGloves", {}, brandName);
 
     if (brandUrl) {
+      signalNavigationPending();
       router.push(brandUrl, { scroll: false });
     }
     queueMicrotask(() => closeAllMobilePanels());
@@ -699,6 +708,7 @@ export default function Sidebar({ isOpen, setIsOpen, isRTL, categories: external
     if (selectedCat?.slug) {
       // Navigate to products page with category slug
       const slug = encodeURIComponent(selectedCat.slug);
+      signalNavigationPending();
       router.push(`/products/${slug}`, { scroll: false });
       // 🔹 استدعاء externalOnSelectCategory إذا كان موجودًا (للتحديث الإضافي)
       // ولكن بعد التنقل، وليس بدلاً منه
@@ -955,7 +965,10 @@ function ParentDetailView({ selectedParent, categories, brands = [], onShowAll, 
         onSelectBrand(brandName);
       } else {
         const brandUrl = buildParentPageUrl("/GoalkeeperGloves", {}, brandName);
-        if (brandUrl) router.push(brandUrl, { scroll: false });
+        if (brandUrl) {
+          signalNavigationPending();
+          router.push(brandUrl, { scroll: false });
+        }
       }
       queueMicrotask(() => onCloseAll?.());
     },

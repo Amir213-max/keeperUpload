@@ -35,9 +35,12 @@ async function load(searchParams) {
 }
 
 export default async function Page({ searchParams }) {
+  const [listing, categoriesData] = await Promise.all([
+    load(searchParams),
+    getListingCategoriesData(),
+  ]);
   const { products, rootCategory, hasMore, categoryId, mergeSubCategoryIds, pageSize, page } =
-    await load(searchParams);
-  const categoriesData = await getListingCategoriesData();
+    listing;
 
   const { brands, attributeValues } = await fetchCategoryAttributeFacets({
     categoryId,

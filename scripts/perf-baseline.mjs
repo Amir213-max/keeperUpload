@@ -2,6 +2,8 @@ import { performance } from "node:perf_hooks";
 
 const BASE_URL = process.env.PERF_BASE_URL || "http://localhost:3000";
 const RUNS = Number(process.env.PERF_RUNS || 3);
+const PERF_PRODUCTS_SLUG = (process.env.PERF_PRODUCTS_SLUG || "").trim();
+
 const TARGETS = [
   "/",
   "/GoalkeeperGloves",
@@ -12,6 +14,7 @@ const TARGETS = [
   "/Sale",
   "/checkout_1",
   "/product/gk2hs",
+  ...(PERF_PRODUCTS_SLUG ? [`/products/${encodeURIComponent(PERF_PRODUCTS_SLUG)}`] : []),
 ];
 
 async function measurePath(path) {

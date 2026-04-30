@@ -5,6 +5,8 @@ import { GET_PRODUCT_BY_SKU } from "@/app/lib/queries";
 import ProductPageClient from "./ProductPageClient";
 import Loader from "@/app/Componants/Loader";
 
+export const revalidate = 120;
+
 export default async function ProductPageSku({ params }) {
   const sku = decodeURIComponent(params.sku);
 

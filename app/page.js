@@ -23,6 +23,8 @@ import { GET_ACTIVE_HOME_PAGE_BLOCKS, GET_BLOGS_QUERY } from "./lib/queries";
 
 
 
+export const revalidate = 120;
+
 // import { graphqlClient } from './lib/graphqlClient';
 // import { BROWSE_CATALOG_QUERY } from "./lib/queries";
 

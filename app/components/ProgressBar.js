@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { usePathname } from 'next/navigation';
+import { KEEPER_NAV_PENDING } from '../lib/navigationProgress';
 
 export default function ProgressBar() {
   const [loading, setLoading] = useState(false);
@@ -9,57 +10,92 @@ export default function ProgressBar() {
   const pathname = usePathname();
   const prevPathnameRef = useRef(pathname);
   const intervalRef = useRef(null);
-  const timeoutRef = useRef(null);
+  const showDelayRef = useRef(null);
+  const finishTimeoutRef = useRef(null);
+  const navigationPendingRef = useRef(false);
+  const barVisibleRef = useRef(false);
+
+  const clearAllTimers = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (showDelayRef.current) {
+      clearTimeout(showDelayRef.current);
+      showDelayRef.current = null;
+    }
+    if (finishTimeoutRef.current) {
+      clearTimeout(finishTimeoutRef.current);
+      finishTimeoutRef.current = null;
+    }
+  };
 
   useEffect(() => {
-    // التحقق من تغيير pathname
-    if (pathname !== prevPathnameRef.current) {
-      // تنظيف أي timers سابقة
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+    const armNavigationProgress = () => {
+      navigationPendingRef.current = true;
+      barVisibleRef.current = false;
+      clearAllTimers();
 
-      // بدء التحميل
-      setLoading(true);
-      setProgress(0);
-      prevPathnameRef.current = pathname;
+      // Show bar only if navigation takes noticeable time.
+      showDelayRef.current = setTimeout(() => {
+        if (!navigationPendingRef.current) return;
+        barVisibleRef.current = true;
+        setLoading(true);
+        setProgress(12);
 
-      // محاكاة التقدم بشكل تدريجي
-      let currentProgress = 0;
-      intervalRef.current = setInterval(() => {
-        if (currentProgress >= 90) {
-          clearInterval(intervalRef.current);
-          return;
-        }
-        // زيادة تدريجية أسرع في البداية، أبطأ في النهاية
-        const increment = currentProgress < 30 ? 15 : currentProgress < 70 ? 8 : 3;
-        currentProgress = Math.min(currentProgress + increment, 90);
-        setProgress(currentProgress);
-      }, 80);
+        let current = 12;
+        intervalRef.current = setInterval(() => {
+          if (current >= 88) return;
+          const step = current < 40 ? 10 : current < 70 ? 5 : 2;
+          current = Math.min(88, current + step);
+          setProgress(current);
+        }, 90);
+      }, 220);
+    };
 
-      // إكمال التحميل بعد تحميل الصفحة
-      timeoutRef.current = setTimeout(() => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-        }
-        setProgress(100);
-        setTimeout(() => {
-          setLoading(false);
-          setProgress(0);
-        }, 300);
-      }, 500);
+    const handleClick = (event) => {
+      const target = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      if (!target) return;
+      const href = target.getAttribute('href') || '';
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+      if (/^https?:\/\//i.test(href)) return;
+      if (!href.startsWith('/')) return;
+      if (target.getAttribute('target') === '_blank') return;
+
+      armNavigationProgress();
+    };
+
+    const handleKeeperNavPending = () => armNavigationProgress();
+
+    document.addEventListener('click', handleClick, true);
+    window.addEventListener(KEEPER_NAV_PENDING, handleKeeperNavPending);
+    return () => {
+      document.removeEventListener('click', handleClick, true);
+      window.removeEventListener(KEEPER_NAV_PENDING, handleKeeperNavPending);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (pathname === prevPathnameRef.current) return;
+    prevPathnameRef.current = pathname;
+    navigationPendingRef.current = false;
+
+    // Route finished before delay -> never show bar.
+    if (!barVisibleRef.current) {
+      clearAllTimers();
+      return;
     }
 
+    clearAllTimers();
+    setProgress(100);
+    finishTimeoutRef.current = setTimeout(() => {
+      setLoading(false);
+      setProgress(0);
+      barVisibleRef.current = false;
+    }, 180);
+
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      clearAllTimers();
     };
   }, [pathname]);
 

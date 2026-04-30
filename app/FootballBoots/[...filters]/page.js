@@ -13,7 +13,10 @@ import { getListingPageQuery } from "../../lib/categoryPageServer";
 export const revalidate = 120;
 
 export default async function Page({ searchParams }) {
-  const { offset, page } = await getListingPageQuery(searchParams);
+  const [{ offset, page }, categoriesData] = await Promise.all([
+    getListingPageQuery(searchParams),
+    getListingCategoriesData(),
+  ]);
   const result = await fetchCategoryListingByVertical("footballBoots", {
     limit: DEFAULT_CATEGORY_PAGE_SIZE,
     offset,
@@ -29,7 +32,6 @@ export default async function Page({ searchParams }) {
     maxPages: 1,
     mergeSubCategoryIds: result.mergeSubCategoryIds ?? [],
   });
-  const categoriesData = await getListingCategoriesData();
 
   return (
     <Suspense fallback={<Loader />}>

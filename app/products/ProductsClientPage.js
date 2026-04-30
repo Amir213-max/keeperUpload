@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, useTransition } from "react";
 // import BrandsSlider from "../Componants/brandsSplide_1";
 import ProductSlider from "../Componants/ProductSlider";
 import Sidebar from "../Componants/sidebar";
@@ -48,6 +48,7 @@ export default function ProductsClientPage({
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const [, startTransition] = useTransition();
 
   const [categories, setCategories] = useState(() =>
     Array.isArray(initialCategories) ? initialCategories : []
@@ -399,16 +400,6 @@ export default function ProductsClientPage({
       return brandMatch && attributesMatch;
     });
     
-    // Debug: Log filtering results
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔹 Filtering products:', {
-        totalProducts: products.length,
-        selectedBrand,
-        selectedAttributes,
-        filteredCount: filtered.length,
-      });
-    }
-    
     return filtered;
   }, [products, selectedBrand, selectedAttributes]);
 
@@ -426,9 +417,11 @@ export default function ProductsClientPage({
     if (lastAppliedFilterSignatureRef.current === filterSignature) return;
     lastAppliedFilterSignatureRef.current = filterSignature;
     if (serverPage > 1) {
-      router.replace(buildPathWithPage(pathname, searchParams, 1));
+      startTransition(() => {
+        router.replace(buildPathWithPage(pathname, searchParams, 1));
+      });
     }
-  }, [filterSignature, serverPage, pathname, searchParams, router]);
+  }, [filterSignature, serverPage, pathname, searchParams, router, startTransition]);
 
   const [currentRootCategory, setCurrentRootCategory] = useState(rootCategory);
 

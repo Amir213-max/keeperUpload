@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, useTransition } from "react";
 import BrandsSlider from "../Componants/brandsSplide_1";
 import FilterDropdown from "../Componants/CheckboxDropdown ";
 import { useCurrency } from "../contexts/CurrencyContext";
@@ -17,7 +17,6 @@ import { buildPathSegmentUrl, buildParentPageUrl, parsePathSegments, parseBrandF
 import { useCategory } from "../contexts/CategoryContext";
 import { useProductFilters } from "../hooks/useProductFilters";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import ProgressBar from "../Componants/ProgressBar";
 import ServerPaginationControls from "../Componants/ServerPaginationControls";
 import { buildPathWithPage } from "../lib/paginationUrl";
 import { parseListingPageFromUrlSearchParams } from "../lib/listingPageParse";
@@ -39,6 +38,7 @@ export default function FootballClientPage({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
   const [categories, setCategories] = useState(() =>
     Array.isArray(initialCategories) ? initialCategories : []
   );
@@ -53,14 +53,6 @@ export default function FootballClientPage({
     return initialPage;
   }, [searchParams, initialPage]);
   const productsPerPage = listingPageSize;
-  
-  // ✅ إضافة state لتتبع تحميل الصور
-  const [imagesLoading, setImagesLoading] = useState(false); // يبدأ بـ false، يصبح true فقط عند التحميل الأولي أو action من المستخدم
-  const [imageProgress, setImageProgress] = useState(0);
-  const [showProducts, setShowProducts] = useState(false); // إخفاء المنتجات حتى يكتمل التحميل
-  const loadedImagesRef = useRef(new Set());
-  const totalImagesRef = useRef(0);
-  const isInitialLoadRef = useRef(true); // لتتبع التحميل الأولي
   
  const { loading: currencyLoading } = useCurrency();
 
@@ -186,20 +178,6 @@ useEffect(() => {
     }
   }, [brands, attributeValues, pathname, searchParams, setSelectedBrand, setSelectedAttributes]);
 
-  // ✅ بدء ProgressBar عند تغيير الفلاتر أو الصفحة (action من المستخدم)
-  useEffect(() => {
-    // تجاهل التحميل الأولي - سيتم التعامل معه في useEffect منفصل
-    if (isInitialLoadRef.current) {
-      return;
-    }
-    
-    // فقط عند action من المستخدم (فلترة أو تغيير صفحة)
-    setImagesLoading(true);
-    setImageProgress(0);
-    setShowProducts(true); // إبقاء المنتجات ظاهرة لتقليل الإحساس ببطء التنقل
-    loadedImagesRef.current.clear();
-  }, [selectedBrand, selectedAttributes, selectedCategoryId]);
-
   // 🔹 فلترة المنتجات حسب الفلاتر - استخدام useMemo لتحسين الأداء
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
@@ -249,9 +227,11 @@ useEffect(() => {
     if (lastAppliedFilterSignatureRef.current === filterSignature) return;
     lastAppliedFilterSignatureRef.current = filterSignature;
     if (serverPage > 1) {
-      router.replace(buildPathWithPage(pathname, searchParams, 1));
+      startTransition(() => {
+        router.replace(buildPathWithPage(pathname, searchParams, 1));
+      });
     }
-  }, [filterSignature, serverPage, pathname, searchParams, router]);
+  }, [filterSignature, serverPage, pathname, searchParams, router, startTransition]);
 
   // 🔹 ضبط اسم التصنيف المحدد
   useEffect(() => {
@@ -260,77 +240,6 @@ useEffect(() => {
   }, [selectedCategoryId, categoriesForSidebar]);
 
   const currentProducts = filteredProducts;
-
-  // ✅ حساب عدد الصور الإجمالي وبدء التحميل الأولي
-  useEffect(() => {
-    const totalImages = currentProducts.reduce((count, product) => {
-      return count + (product.images?.length > 0 ? 1 : 0);
-    }, 0);
-    totalImagesRef.current = totalImages;
-    
-    // ✅ التحميل الأولي فقط
-    if (isInitialLoadRef.current && totalImages > 0) {
-      setImagesLoading(true);
-      setImageProgress(0);
-      setShowProducts(false); // إخفاء المنتجات حتى تحمل الصور
-      loadedImagesRef.current.clear();
-      isInitialLoadRef.current = false;
-      
-      // ✅ Fallback سريع: إذا تأخر التحميل، اعرض المنتجات بسرعة
-      const fallbackTimeout = setTimeout(() => {
-        setImagesLoading(false);
-        setImageProgress(0);
-        setShowProducts(true);
-      }, 1200);
-      
-      return () => clearTimeout(fallbackTimeout);
-    } else if (totalImages === 0 && isInitialLoadRef.current) {
-      // إذا لم تكن هناك صور في التحميل الأولي، اعرض المنتجات مباشرة
-      setImagesLoading(false);
-      setImageProgress(0);
-      setShowProducts(true);
-      isInitialLoadRef.current = false;
-    } else if (!isInitialLoadRef.current) {
-      if (totalImages === 0) {
-        setImagesLoading(false);
-        setImageProgress(0);
-        setShowProducts(true);
-        return;
-      }
-      const fallbackTimeout = setTimeout(() => {
-        setImagesLoading(false);
-        setImageProgress(0);
-        setShowProducts(true);
-      }, 1200);
-      return () => clearTimeout(fallbackTimeout);
-    }
-  }, [currentProducts]);
-
-  // ✅ معالج تحميل الصور
-  const handleImageLoad = useCallback((productId) => {
-    if (!loadedImagesRef.current.has(productId)) {
-      loadedImagesRef.current.add(productId);
-      const loadedCount = loadedImagesRef.current.size;
-      const totalImages = totalImagesRef.current;
-      
-      // ✅ حساب النسبة المئوية الفعلية
-      if (totalImages > 0) {
-        const progress = Math.min((loadedCount / totalImages) * 100, 100);
-        setImageProgress(progress);
-      }
-      
-      // ✅ إذا تم تحميل جميع الصور، أكمل إلى 100% ثم اخف الشريط
-      if (loadedCount >= totalImages && totalImages > 0) {
-        // تأكد من الوصول إلى 100%
-        setImageProgress(100);
-        // انتظر قليلاً للتأكد من أن كل شيء تم تحميله
-        setTimeout(() => {
-          setImagesLoading(false);
-          setShowProducts(true); // عرض المنتجات بعد اكتمال التحميل
-        }, 300);
-      }
-    }
-  }, []);
 
   // 🔹 Handler for category selection - using useCallback outside JSX
   const handleSelectCategory = useCallback((catId) => {
@@ -352,9 +261,13 @@ useEffect(() => {
           selectedBrand // 🔹 الحفاظ على البراند الحالي
         );
         if (newUrl) {
-          router.replace(newUrl, { scroll: false });
+          startTransition(() => {
+            router.replace(newUrl, { scroll: false });
+          });
         } else {
-          router.replace('/FootballBoots', { scroll: false });
+          startTransition(() => {
+            router.replace('/FootballBoots', { scroll: false });
+          });
         }
       } else {
         // تحديث الـ state أولاً
@@ -369,13 +282,15 @@ useEffect(() => {
         // Only navigate if newUrl is valid (not null)
         if (newUrl) {
           // 🔹 استخدام router.replace بدلاً من router.push
-          router.replace(newUrl, { scroll: false });
+          startTransition(() => {
+            router.replace(newUrl, { scroll: false });
+          });
         }
       }
     } else {
       console.warn("⚠️ Category not found for ID:", catId);
     }
-  }, [categories, selectedCategoryId, selectedAttributes, selectedBrand, setSelectedCategoryId, router]);
+  }, [categories, selectedCategoryId, selectedAttributes, selectedBrand, setSelectedCategoryId, router, startTransition]);
 
   const getBadgeColor = (label) => {
     if (!label) return "bg-gray-400";
@@ -397,11 +312,6 @@ useEffect(() => {
   return (
     <>
     <div className={`bg-[#373e3e] ${isRTL ? "rtl" : "ltr"}`}>
-      {/* ✅ Progress Bar في أعلى الشاشة */}
-      <ProgressBar 
-        isLoading={imagesLoading && totalImagesRef.current > 0} 
-        progress={imageProgress}
-      />
       <div className="grid pt-1 grid-cols-1 lg:grid-cols-5">
         {/* Sidebar */}
         <div className="hidden lg:block lg:col-span-1 bg-black h-auto">
@@ -507,7 +417,6 @@ useEffect(() => {
           <ProductSlider 
             images={product.images} 
             productName={product.name}
-            onImageLoad={() => handleImageLoad(product.id || product.sku)}
           />
         </div>
 

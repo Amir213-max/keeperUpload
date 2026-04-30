@@ -14,6 +14,24 @@ For local baseline collection:
    - `npm run perf:baseline`
 3. Optional custom host:
    - `PERF_BASE_URL=https://staging.example.com npm run perf:baseline`
+4. Optional category slug listing (when set, adds `/products/{slug}` to the baseline table):
+   - `PERF_PRODUCTS_SLUG=your-category-slug npm run perf:baseline`
+
+## Tap-to-FCP and tap-to-LCP validation
+
+`npm run perf:baseline` measures server TTFB/total for a URL fetch; it does **not** replace a real **tap-to-first-paint** trace. After navigation-related changes, validate once per release (or when touching listing/sidebar):
+
+1. **Chrome DevTools** → **Performance** → enable **Screenshots** and **Web Vitals** (if available).
+2. Set **CPU** and **Network** throttling to match your target device (e.g. **Fast 3G** + **4× slowdown** for a mid mobile profile).
+3. **Record** → perform the flows below with a cold or warm cache as appropriate → **Stop**.
+4. In the timeline, measure from the **Input** event (tap/click) to **FCP** and **LCP** markers for the destination route.
+5. Flows to repeat:
+   - Home → heavy listing (e.g. goalkeeper gloves vertical).
+   - Open mobile menu → second panel → choose a subcategory or parent “show all”.
+   - Listing → product detail.
+6. **Network** panel (same throttle): after opening the mobile drawer, confirm a burst of `prefetch` / `_rsc` requests does not starve the **actual** navigation request when the user taps immediately (compare waterfall before vs after prefetch tuning).
+
+Document deltas in [performance-results-mobile-nav.md](./performance-results-mobile-nav.md) or your release notes when numbers matter for a decision.
 
 ## Metrics to track after every optimization step
 

@@ -1,11 +1,12 @@
 'use client';
 
-import { use } from 'react';
+import { use, useMemo } from 'react';
 import { useState, useEffect } from 'react';
 import { graphqlRequest } from '../../lib/graphqlClientHelper';
 import { gql } from 'graphql-request';
 import { useTranslation } from '../../contexts/TranslationContext'; // ✅ استخدام الـ context
 import Loader from '../../Componants/Loader';
+import { rewriteCmsHtmlMediaUrls } from '../../lib/cmsPageHtml';
 
 const GET_PAGE_BY_SLUG = gql`
   query GetPageBySlug($slug: String!) {
@@ -41,6 +42,16 @@ export default function PageSlug({ params }) {
     fetchPage();
   }, [slug]);
 
+  // Hooks must run before any early return (same order every render).
+  const htmlWithAbsoluteMedia = useMemo(() => {
+    if (!page) return '';
+    const description =
+      lang === 'ar' ? page.description_ar : page.description_en;
+    return rewriteCmsHtmlMediaUrls(description || '');
+  }, [page, lang]);
+
+  const direction = lang === 'ar' ? 'rtl' : 'ltr';
+
   if (loading) return <Loader />;
 
   if (error)
@@ -57,30 +68,33 @@ export default function PageSlug({ params }) {
       </div>
     );
 
-  // ✅ نحدد أي وصف نعرضه حسب اللغة
-  const description =
-    lang === 'ar' ? page.description_ar : page.description_en;
-
-  // ✅ الاتجاه حسب اللغة
-  const direction = lang === 'ar' ? 'rtl' : 'ltr';
-
   return (
     <div
-      className={`min-h-screen bg-black text-white flex flex-col px-4 py-12 ${
+      className={`min-h-screen bg-neutral-950 text-neutral-100 ${
         direction === 'rtl' ? 'text-right' : 'text-left'
       }`}
       dir={direction}
     >
-     
-<h1 className="text-3xl mx-7 font-bold mb-6 text-yellow-400 ">
-      {page.name}
-      </h1>
-      <div
-        className="prose prose-invert max-w-3xl mx-7 prose-headings:text-yellow-400 prose-a:text-yellow-400"
-        
-        dangerouslySetInnerHTML={{ __html: description }}
-      />
-       
+      <article className="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-14">
+        <h1 className="mb-8 text-3xl font-bold tracking-tight text-amber-400 sm:text-4xl">
+          {page.name}
+        </h1>
+        <div
+          className={[
+            'cms-page-html prose prose-invert max-w-none',
+            'prose-headings:text-amber-100 prose-p:text-neutral-200 prose-li:text-neutral-200',
+            'prose-a:text-amber-400 prose-a:underline prose-a:decoration-amber-400/60 hover:prose-a:text-amber-300',
+            'prose-strong:text-white prose-blockquote:border-amber-500/40 prose-blockquote:text-neutral-300',
+            'prose-img:mx-auto prose-img:rounded-lg prose-img:shadow-lg prose-img:max-w-full',
+            'prose-hr:border-neutral-700',
+            'prose-table:block prose-table:w-full prose-table:overflow-x-auto',
+            'prose-th:border prose-th:border-neutral-600 prose-td:border prose-td:border-neutral-700',
+            'prose-pre:bg-neutral-900 prose-pre:text-neutral-100',
+            'break-words [word-break:break-word]',
+          ].join(' ')}
+          dangerouslySetInnerHTML={{ __html: htmlWithAbsoluteMedia }}
+        />
+      </article>
     </div>
   );
 }

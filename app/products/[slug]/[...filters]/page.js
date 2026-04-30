@@ -10,6 +10,8 @@ import {
 import { getListingPageQuery } from "../../../lib/categoryPageServer";
 import ProductsClientPage from "../../ProductsClientPage";
 
+export const revalidate = 120;
+
 const fetchProductsByCategory = async (categorySlug, searchParams) => {
   if (!categorySlug) {
     return {
@@ -23,9 +25,10 @@ const fetchProductsByCategory = async (categorySlug, searchParams) => {
     };
   }
 
-  const { offset, page } = await getListingPageQuery(searchParams);
-
-  const categoriesData = await getListingCategoriesData();
+  const [{ offset, page }, categoriesData] = await Promise.all([
+    getListingPageQuery(searchParams),
+    getListingCategoriesData(),
+  ]);
   const result = await fetchCategoryListingBySlug({
     slug: categorySlug,
     limit: DEFAULT_CATEGORY_PAGE_SIZE,
@@ -66,6 +69,7 @@ export default async function ProductsFiltersPage({ params, searchParams }) {
   if (categoryId) {
     const facet = await fetchCategoryAttributeFacets({
       categoryId,
+      maxPages: 1,
       mergeSubCategoryIds,
     });
     brands = facet.brands;

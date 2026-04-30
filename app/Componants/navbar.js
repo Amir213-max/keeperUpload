@@ -41,7 +41,6 @@ export default function NavbarWithLinks() {
   // ✅ فتح الـ CartSidebar عند إضافة منتج
   useEffect(() => {
     const handleOpenCart = () => {
-      console.log("🛒 Opening cart sidebar...");
       setCartOpen(true);
     };
 

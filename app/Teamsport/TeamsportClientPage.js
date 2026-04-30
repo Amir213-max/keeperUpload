@@ -175,7 +175,7 @@ export default function TeamsportClientPage({
     setImageProgress(0);
     setShowProducts(true); // إبقاء المنتجات ظاهرة لتقليل الإحساس ببطء التنقل
     loadedImagesRef.current.clear();
-  }, [selectedBrand, selectedAttributes, selectedCategoryId]);
+  }, [selectedBrand, selectedAttributes, selectedCategoryId, serverPage]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
@@ -294,13 +294,13 @@ export default function TeamsportClientPage({
       
       // ✅ إذا تم تحميل جميع الصور، أكمل إلى 100% ثم اخف الشريط
       if (loadedCount >= totalImages && totalImages > 0) {
-        // تأكد من الوصول إلى 100%
         setImageProgress(100);
-        // انتظر قليلاً للتأكد من أن كل شيء تم تحميله
-        setTimeout(() => {
-          setImagesLoading(false);
-          setShowProducts(true); // عرض المنتجات بعد اكتمال التحميل
-        }, 300);
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            setImagesLoading(false);
+            setShowProducts(true);
+          }, 300);
+        });
       }
     }
   }, []);

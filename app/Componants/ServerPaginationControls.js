@@ -3,6 +3,7 @@
 import { useMemo, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { buildPathWithPage } from "../lib/paginationUrl";
+import { signalNavigationPending } from "../lib/navigationProgress";
 
 /**
  * Build sorted unique page numbers around current page (no total count from API).
@@ -54,6 +55,7 @@ export default function ServerPaginationControls({ serverPage = 1, hasMore = fal
 
   const go = (page) => {
     const next = Math.max(1, page);
+    signalNavigationPending();
     router.push(buildPathWithPage(pathname, searchParams, next), { scroll: false });
   };
 
